@@ -27,6 +27,7 @@ router.post('/', (req, res) => {
     usuarios.criar({
       nome: req.body.nome,
       login: req.body.login,
+      email: req.body.email,
       senha: req.body.senha,
       papel: req.body.papel
     });
@@ -48,6 +49,15 @@ router.post('/:id/senha', (req, res) => {
       login: (usuarios.porId(req.params.id) || {}).login || ''
     });
     res.redirect(`/usuarios?${qs}`);
+  } catch (e) {
+    voltar(res, 'erro', e.message);
+  }
+});
+
+router.post('/:id/email', (req, res) => {
+  try {
+    usuarios.definirEmail(req.params.id, req.body.email);
+    voltar(res, 'aviso', 'Endereço de aviso atualizado.');
   } catch (e) {
     voltar(res, 'erro', e.message);
   }

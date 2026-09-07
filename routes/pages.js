@@ -716,25 +716,25 @@ router.post('/contratos/iniciar', (req, res) => {
 router.get('/financeiro', (req, res) => {
   const empreendimentos = db.prepare('SELECT * FROM empreendimentos').all();
   const empreendimentoId = req.query.empreendimento || 'todos';
-  let financeiroComRelacionamento;
-  
+
+  // Empreendimento sozinho não identifica o pagamento — a unidade e o cliente
+  // vêm junto para dizer de quem é cada parcela.
+  const SELECAO = `
+    SELECT f.*,
+           COALESCE(e.nome, 'Não vinculado') as empreendimentoNome,
+           u.numero as unidadeNumero,
+           c.nome   as clienteNome
+    FROM financeiro f
+    LEFT JOIN empreendimentos e ON f.empreendimentoId = e.id
+    LEFT JOIN unidades u        ON f.unidadeId = u.id
+    LEFT JOIN clientes c        ON f.clienteId = c.id
+  `;
+
   // Alterado para filtrar apenas lançamentos do tipo 'entrada' (recebimentos)
-  if (empreendimentoId !== 'todos') {
-    financeiroComRelacionamento = db.prepare(`
-      SELECT f.*, COALESCE(e.nome, 'Não vinculado') as empreendimentoNome
-      FROM financeiro f
-      LEFT JOIN empreendimentos e ON f.empreendimentoId = e.id
-      WHERE f.empreendimentoId = ? AND f.tipo = 'entrada'
-    `).all(empreendimentoId);
-  } else {
-    financeiroComRelacionamento = db.prepare(`
-      SELECT f.*, COALESCE(e.nome, 'Não vinculado') as empreendimentoNome
-      FROM financeiro f
-      LEFT JOIN empreendimentos e ON f.empreendimentoId = e.id
-      WHERE f.tipo = 'entrada'
-    `).all();
-  }
-  
+  const financeiroComRelacionamento = empreendimentoId !== 'todos'
+    ? db.prepare(`${SELECAO} WHERE f.empreendimentoId = ? AND f.tipo = 'entrada'`).all(empreendimentoId)
+    : db.prepare(`${SELECAO} WHERE f.tipo = 'entrada'`).all();
+
   const lancamentos = financeiroComRelacionamento
     .map(financeiro.enriquecer)
     .map((item) => ({ ...item, tipoLabel: financeiroTipoMap[item.tipo] || item.tipo }))
@@ -743,9 +743,21 @@ router.get('/financeiro', (req, res) => {
   const filtro = req.query.situacao;
   const visiveis = ['previsto', 'atrasado', 'recebido'].includes(filtro) ? lancamentos.filter((l) => l.situacao === filtro) : lancamentos;
   
+  // Listas do lançamento manual. A unidade traz o empreendimento junto para
+  // que o select possa ser agrupado sem uma segunda consulta.
+  const unidades = db.prepare(`
+    SELECT u.id, u.numero, u.empreendimentoId, COALESCE(e.nome, 'Sem empreendimento') as empreendimentoNome
+    FROM unidades u
+    LEFT JOIN empreendimentos e ON u.empreendimentoId = e.id
+    ORDER BY empreendimentoNome, u.numero
+  `).all();
+  const clientes = db.prepare('SELECT id, nome FROM clientes ORDER BY nome').all();
+
   res.render('financeiro', {
     financeiro: visiveis,
     totais: financeiro.totais(lancamentos),
+    unidades,
+    clientes,
     contagem: {
       previsto: lancamentos.filter((l) => l.situacao === 'previsto').length,
       atrasado: lancamentos.filter((l) => l.situacao === 'atrasado').length,

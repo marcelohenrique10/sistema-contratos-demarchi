@@ -62,12 +62,27 @@ function registrarRecebiveis({ contratoId, empreendimentoId, compraVenda }) {
 
   db.prepare('DELETE FROM financeiro WHERE contratoId = ?').run(contratoId);
 
+  // O contrato é quem sabe a unidade e o cliente; o lançamento copia para
+  // que o financeiro consiga dizer de quem é cada parcela sem novo join.
+  const contrato = db.prepare('SELECT unidadeId, clienteId FROM contratos WHERE id = ?').get(contratoId) || {};
+
   const ins = db.prepare(
-    'INSERT INTO financeiro (empreendimentoId, categoria, tipo, valor, data, observacao, status, contratoId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO financeiro (empreendimentoId, unidadeId, clienteId, categoria, tipo, valor, data, observacao, status, contratoId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
 
   cronograma.forEach((l) => {
-    ins.run([empreendimentoId || null, l.categoria, 'entrada', l.valor, l.data, l.observacao, 'previsto', contratoId]);
+    ins.run([
+      empreendimentoId || null,
+      contrato.unidadeId || null,
+      contrato.clienteId || null,
+      l.categoria,
+      'entrada',
+      l.valor,
+      l.data,
+      l.observacao,
+      'previsto',
+      contratoId
+    ]);
   });
 
   return {

@@ -47,19 +47,49 @@ function desfazerRecebimento(id) {
     .run(['previsto', parseInt(id)]);
 }
 
-function criar({ empreendimentoId, categoria, valor, data, observacao, status }) {
+function numeroOuNulo(v) {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Escolher a unidade já diz o empreendimento e, quase sempre, o cliente.
+ * Completar aqui evita lançamento meio preenchido por descuido de quem digita.
+ */
+function resolverVinculo({ empreendimentoId, unidadeId, clienteId }) {
+  const uid = numeroOuNulo(unidadeId);
+  const vinculo = {
+    empreendimentoId: empreendimentoId || null,
+    unidadeId: uid,
+    clienteId: numeroOuNulo(clienteId)
+  };
+
+  if (uid === null) return vinculo;
+
+  const unidade = db.prepare('SELECT empreendimentoId, clienteId FROM unidades WHERE id = ?').get(uid);
+  if (!unidade) return vinculo;
+
+  if (!vinculo.empreendimentoId) vinculo.empreendimentoId = unidade.empreendimentoId || null;
+  if (vinculo.clienteId === null) vinculo.clienteId = unidade.clienteId || null;
+  return vinculo;
+}
+
+function criar({ empreendimentoId, unidadeId, clienteId, categoria, valor, data, observacao, status }) {
   const numero = Number(String(valor).replace(/\./g, '').replace(',', '.'));
   if (!Number.isFinite(numero) || numero <= 0) {
     throw new Error('Informe um valor maior que zero.');
   }
 
   const st = status === 'previsto' ? 'previsto' : 'recebido';
-  
+  const vinculo = resolverVinculo({ empreendimentoId, unidadeId, clienteId });
+
   // Forçamos o tipo sempre como 'entrada' para eliminar as saídas
   db.prepare(
-    'INSERT INTO financeiro (empreendimentoId, categoria, tipo, valor, data, observacao, status, dataRecebimento) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO financeiro (empreendimentoId, unidadeId, clienteId, categoria, tipo, valor, data, observacao, status, dataRecebimento) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run([
-    empreendimentoId || null,
+    vinculo.empreendimentoId,
+    vinculo.unidadeId,
+    vinculo.clienteId,
     categoria || 'Outros',
     'entrada',
     numero,
@@ -70,15 +100,38 @@ function criar({ empreendimentoId, categoria, valor, data, observacao, status })
   ]);
 }
 
-function atualizar(id, { categoria, valor, data, observacao }) {
+function atualizar(id, dados) {
+  const { categoria, valor, data, observacao } = dados;
   const numero = Number(String(valor).replace(/\./g, '').replace(',', '.'));
   if (!Number.isFinite(numero) || numero <= 0) {
     throw new Error('Informe um valor maior que zero.');
   }
 
+  // Quem edita pode mandar só parte do formulário; o que não veio permanece
+  // como está, em vez de virar vínculo em branco.
+  const atual = db.prepare('SELECT empreendimentoId, unidadeId, clienteId FROM financeiro WHERE id = ?')
+    .get(parseInt(id)) || {};
+  const escolher = (campo) => (campo in dados ? dados[campo] : atual[campo]);
+
+  const vinculo = resolverVinculo({
+    empreendimentoId: escolher('empreendimentoId'),
+    unidadeId: escolher('unidadeId'),
+    clienteId: escolher('clienteId')
+  });
+
   db.prepare(
-    'UPDATE financeiro SET categoria = ?, tipo = ?, valor = ?, data = ?, observacao = ? WHERE id = ?'
-  ).run([categoria || 'Outros', 'entrada', numero, data || null, observacao || null, parseInt(id)]);
+    'UPDATE financeiro SET empreendimentoId = ?, unidadeId = ?, clienteId = ?, categoria = ?, tipo = ?, valor = ?, data = ?, observacao = ? WHERE id = ?'
+  ).run([
+    vinculo.empreendimentoId,
+    vinculo.unidadeId,
+    vinculo.clienteId,
+    categoria || 'Outros',
+    'entrada',
+    numero,
+    data || null,
+    observacao || null,
+    parseInt(id)
+  ]);
 }
 
 function excluir(id) {

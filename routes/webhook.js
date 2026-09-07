@@ -87,6 +87,13 @@ function normalizarTipoDocumento(tipo) {
   return String(tipo || '').replace(/^\s*\d+\s*[.)-]\s*/, '').trim();
 }
 
+// Aviso que não foi para o responsável precisa deixar rastro: o cadastro é
+// que está errado, e ninguém descobriria isso só pelo e-mail chegando.
+function notaDoAviso(aviso) {
+  return `Responsável "${aviso.responsavel || '(vazio)'}" não virou destinatário `
+    + `(${aviso.motivo}); aviso foi para ${aviso.para || 'ninguém — nenhum administrador tem e-mail'}`;
+}
+
 // Documentos gerados antes desta coluna existir têm NULL. Nesse caso não dá
 // para afirmar que estava tudo certo — devolvemos lista vazia, mas o log
 // registra que a conferência é desconhecida.
@@ -258,6 +265,11 @@ router.post('/documento', checkAuth, async (req, res) => {
   const { documento, unidadeNumero, clienteId, contratoId, respostaId } = req.body;
   const empreendimentoId = resolverEmpreendimentoId(req.body);
 
+  // Quem preencheu o formulário é quem precisa saber que o contrato saiu.
+  // O n8n só lê `aviso.para` e manda — a decisão de para quem fica aqui,
+  // onde dá para testar e onde os usuários já são conhecidos.
+  const aviso = usuarios.destinoDeAviso(req.body.responsavel, req.body.emailResponsavel);
+
   if (!documento || !documento.tipo) {
     logWebhook('documento', req.body, 'erro', 'Payload sem documento.tipo');
     return res.status(400).json({ sucesso: false, erro: 'Payload sem documento.tipo' });
@@ -288,11 +300,13 @@ router.post('/documento', checkAuth, async (req, res) => {
         const faltando = lerCamposSemValor(jaGerado.camposSemValor);
 
         logWebhook('documento', req.body, 'sucesso',
-          `Resposta já processada, documento reaproveitado${faltando.length ? ` (${faltando.length} campo(s) em branco)` : ''}`);
+          `Resposta já processada, documento reaproveitado${faltando.length ? ` (${faltando.length} campo(s) em branco)` : ''}`
+          + (aviso.reconhecido ? '' : ` | ${notaDoAviso(aviso)}`));
 
         return res.json({
           sucesso: true, id: jaGerado.id, arquivo: jaGerado.caminho,
-          camposSemValor: faltando, camposNaoAplicaveis: [], jaProcessado: true
+          camposSemValor: faltando, camposNaoAplicaveis: [], jaProcessado: true,
+          aviso
         });
       }
     }
@@ -334,8 +348,10 @@ router.post('/documento', checkAuth, async (req, res) => {
 
     // Documento gerado com buraco continua parecendo pronto. O aviso é o
     // único jeito de alguém notar — registramos também no log.
-    logWebhook('documento', req.body, 'sucesso',
-      faltando.length ? `Gerado com ${faltando.length} campo(s) em branco: ${faltando.join(', ')}` : null);
+    const notas = [];
+    if (faltando.length) notas.push(`Gerado com ${faltando.length} campo(s) em branco: ${faltando.join(', ')}`);
+    if (!aviso.reconhecido) notas.push(notaDoAviso(aviso));
+    logWebhook('documento', req.body, 'sucesso', notas.join(' | ') || null);
 
     res.json({
       sucesso: true,
@@ -343,7 +359,8 @@ router.post('/documento', checkAuth, async (req, res) => {
       arquivo: resultado.caminhoPublico,
       camposSemValor: faltando,
       camposNaoAplicaveis: resultado.placeholdersNaoAplicaveis,
-      recebiveis
+      recebiveis,
+      aviso
     });
   } catch (err) {
     logWebhook('documento', req.body, 'erro', err.message);

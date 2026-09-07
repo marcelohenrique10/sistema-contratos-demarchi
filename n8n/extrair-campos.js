@@ -38,6 +38,9 @@ const dadosGerais = {
   dataDocumento: v('Data do documento'),
   cidadeUf: v('Cidade/UF da assinatura - ex:(Aracruz/ES)'),
   responsavel: v('Responsável interno pelo preenchimento'),
+  // Para onde vai o aviso de contrato pronto. Vazio aqui não quebra nada: a
+  // aplicação cai no endereço do cadastro do responsável.
+  emailResponsavel: v('E-mail do responsável pelo preenchimento'),
 };
 
 // ---------- Contratante ----------
@@ -199,6 +202,7 @@ return [{
     telefone: comprador.telefone,
     email: comprador.email,
     responsavel: dadosGerais.responsavel,
+    emailResponsavel: dadosGerais.emailResponsavel,
     dataHora: dadosGerais.dataHora,
     pessoaJuridica: ehPessoaJuridica,
 

@@ -34,6 +34,75 @@ function normalizarLogin(valor) {
   return String(valor || '').trim().toLowerCase();
 }
 
+const PARECE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Para onde escrever para esta pessoa. No uso normal o login já é o e-mail —
+ * é assim que o administrador entrega a conta. A coluna `email` existe só
+ * para os logins que não são endereço (o `admin` original, por exemplo).
+ */
+function emailDe(usuario) {
+  if (!usuario) return null;
+  const proprio = String(usuario.email || '').trim();
+  if (PARECE_EMAIL.test(proprio)) return proprio;
+  const login = String(usuario.login || '').trim();
+  return PARECE_EMAIL.test(login) ? login : null;
+}
+
+function emailsDeAdmins() {
+  return db.prepare("SELECT * FROM usuarios WHERE papel = 'admin' AND ativo = 1 ORDER BY id")
+    .all()
+    .map(emailDe)
+    .filter(Boolean);
+}
+
+/**
+ * Para quem vai o aviso de contrato pronto, em três degraus:
+ *
+ *   1. o e-mail que a pessoa escreveu no formulário;
+ *   2. o endereço do cadastro dela, quando o nome é reconhecido;
+ *   3. os administradores.
+ *
+ * O formulário vem primeiro porque quem preencheu disse ali, naquela
+ * resposta, para onde queria o aviso. O cadastro atrás dele cobre o caso de
+ * o campo vir vazio ou com um endereço que nem parece endereço — que é o
+ * erro de digitação mais comum e o único detectável.
+ *
+ * Nunca devolve vazio de propósito: aviso perdido é contrato que fica pronto
+ * sem ninguém saber, que é o problema que este recurso existe para resolver.
+ */
+function destinoDeAviso(nomeResponsavel, emailDoFormulario) {
+  const informado = String(nomeResponsavel || '').trim();
+  const doFormulario = normalizarLogin(emailDoFormulario);
+  const responsavel = porNomeAproximado(informado);
+
+  if (PARECE_EMAIL.test(doFormulario)) {
+    return {
+      para: doFormulario,
+      responsavel: (responsavel && responsavel.nome) || informado || null,
+      reconhecido: true,
+      motivo: 'formulario'
+    };
+  }
+
+  const doCadastro = emailDe(responsavel);
+  if (doCadastro) {
+    return { para: doCadastro, responsavel: responsavel.nome, reconhecido: true, motivo: 'cadastro' };
+  }
+
+  const motivo = doFormulario ? 'email-do-formulario-invalido'
+    : !informado ? 'sem-responsavel'
+    : responsavel ? 'responsavel-sem-email'
+    : 'responsavel-desconhecido';
+
+  return {
+    para: emailsDeAdmins().join(', ') || null,
+    responsavel: informado || null,
+    reconhecido: false,
+    motivo
+  };
+}
+
 function porLogin(login) {
   return db.prepare('SELECT * FROM usuarios WHERE login = ?').get(normalizarLogin(login)) || null;
 }
@@ -57,7 +126,7 @@ function porNomeAproximado(nome) {
 
   if (!alvo) return null;
 
-  const candidatos = db.prepare('SELECT id, nome FROM usuarios WHERE ativo = 1').all()
+  const candidatos = db.prepare('SELECT id, nome, login, email FROM usuarios WHERE ativo = 1').all()
     .filter((u) => String(u.nome)
       .normalize('NFD').replace(/[̀-ͯ]/g, '')
       .trim().toLowerCase().replace(/\s+/g, ' ') === alvo);
@@ -67,8 +136,8 @@ function porNomeAproximado(nome) {
 
 function listar() {
   return db.prepare(
-    'SELECT id, nome, login, papel, ativo, created_at FROM usuarios ORDER BY papel, nome'
-  ).all();
+    'SELECT id, nome, login, email, papel, ativo, created_at FROM usuarios ORDER BY papel, nome'
+  ).all().map((u) => ({ ...u, emailDeAviso: emailDe(u) }));
 }
 
 /**
@@ -82,21 +151,42 @@ function autenticar(login, senha) {
   return usuario;
 }
 
-function criar({ nome, login, senha, papel }) {
+function criar({ nome, login, senha, papel, email }) {
   const nomeLimpo = String(nome || '').trim();
   const loginLimpo = normalizarLogin(login);
+  const emailLimpo = normalizarLogin(email);
 
   if (!nomeLimpo) throw new Error('Informe o nome.');
   if (!loginLimpo) throw new Error('Informe o login.');
   if (!PAPEIS.includes(papel)) throw new Error('Papel inválido.');
   if (String(senha || '').length < 8) throw new Error('A senha precisa de pelo menos 8 caracteres.');
   if (porLogin(loginLimpo)) throw new Error(`Já existe usuário com o login "${loginLimpo}".`);
+  if (emailLimpo && !PARECE_EMAIL.test(emailLimpo)) throw new Error(`"${emailLimpo}" não é um e-mail válido.`);
+
+  // Sem endereço o corretor não recebe o aviso de contrato pronto — e só
+  // descobriria isso quando o aviso não chegasse.
+  if (!emailLimpo && !PARECE_EMAIL.test(loginLimpo)) {
+    throw new Error('Use o e-mail como login, ou preencha o campo E-mail para aviso.');
+  }
 
   const r = db.prepare(
-    'INSERT INTO usuarios (nome, login, senhaHash, papel, ativo) VALUES (?, ?, ?, ?, 1)'
-  ).run([nomeLimpo, loginLimpo, gerarHash(senha), papel]);
+    'INSERT INTO usuarios (nome, login, email, senhaHash, papel, ativo) VALUES (?, ?, ?, ?, ?, 1)'
+  ).run([nomeLimpo, loginLimpo, emailLimpo || null, gerarHash(senha), papel]);
 
   return Number(r.lastInsertRowid);
+}
+
+function definirEmail(id, email) {
+  const limpo = normalizarLogin(email);
+  if (limpo && !PARECE_EMAIL.test(limpo)) throw new Error(`"${limpo}" não é um e-mail válido.`);
+
+  const alvo = porId(id);
+  if (!alvo) throw new Error('Usuário não encontrado.');
+  if (!limpo && !PARECE_EMAIL.test(alvo.login || '')) {
+    throw new Error('O login deste usuário não é um e-mail, então este campo não pode ficar vazio.');
+  }
+
+  db.prepare('UPDATE usuarios SET email = ? WHERE id = ?').run([limpo || null, parseInt(id)]);
 }
 
 function trocarSenha(id, senha) {
@@ -129,5 +219,6 @@ function horasDeSessao(papel) {
 
 module.exports = {
   PAPEIS, autenticar, criar, listar, porId, porLogin, porNomeAproximado,
-  trocarSenha, definirAtivo, gerarHash, horasDeSessao
+  trocarSenha, definirAtivo, definirEmail, gerarHash, horasDeSessao,
+  emailDe, emailsDeAdmins, destinoDeAviso
 };

@@ -137,6 +137,26 @@ if (!colunasFinanceiro.includes('dataRecebimento')) {
   db.exec('ALTER TABLE financeiro ADD COLUMN dataRecebimento TEXT');
 }
 
+// Só o empreendimento não identifica o pagamento: quem pagou e por qual
+// unidade. Guardamos no lançamento (e não só via contrato) porque o
+// financeiro registra o que valia na hora — trocar o cliente da unidade
+// depois não deve reescrever o histórico de recebimentos.
+if (!colunasFinanceiro.includes('unidadeId')) {
+  db.exec('ALTER TABLE financeiro ADD COLUMN unidadeId INTEGER');
+}
+if (!colunasFinanceiro.includes('clienteId')) {
+  db.exec('ALTER TABLE financeiro ADD COLUMN clienteId INTEGER');
+}
+
+// Lançamentos antigos vieram de contratos que já sabem unidade e cliente.
+// Preenche só onde ainda está vazio, para não desfazer ajuste manual.
+db.exec(`
+  UPDATE financeiro SET
+    unidadeId = COALESCE(unidadeId, (SELECT c.unidadeId FROM contratos c WHERE c.id = financeiro.contratoId)),
+    clienteId = COALESCE(clienteId, (SELECT c.clienteId FROM contratos c WHERE c.id = financeiro.contratoId))
+  WHERE contratoId IS NOT NULL AND (unidadeId IS NULL OR clienteId IS NULL)
+`);
+
 // Identificador da resposta do formulário (o carimbo de data/hora, único por
 // envio). Impede que reprocessar a mesma resposta crie contrato e documento
 // duplicados — o n8n pode reexecutar por falha de rede ou clique repetido.
@@ -184,6 +204,14 @@ if (!colunasUnidades.includes('reservadoEm')) {
   db.exec('ALTER TABLE unidades ADD COLUMN reservadoEm TEXT');
 }
 
+// Para onde vai o aviso de contrato pronto. No uso normal o login já é o
+// e-mail, e esta coluna fica vazia; ela existe para os logins que não são
+// endereço — o `admin` criado na primeira subida, por exemplo.
+const colunasUsuarios = db.prepare('PRAGMA table_info(usuarios)').all().map((c) => c.name);
+if (!colunasUsuarios.includes('email')) {
+  db.exec('ALTER TABLE usuarios ADD COLUMN email TEXT');
+}
+
 // Primeiro administrador. Reaproveita a senha que já estava em uso para
 // ninguém ficar de fora do sistema depois da migração.
 if (db.prepare('SELECT COUNT(*) as n FROM usuarios').get().n === 0) {
@@ -194,10 +222,13 @@ if (db.prepare('SELECT COUNT(*) as n FROM usuarios').get().n === 0) {
     const sal = crypto.randomBytes(16).toString('hex');
     const hash = `${sal}:${crypto.scryptSync(senha, sal, 64).toString('hex')}`;
     const login = (process.env.APP_ADMIN_LOGIN || 'admin').trim().toLowerCase();
+    // O login padrão ("admin") não é endereço, então o aviso de contrato
+    // pronto não teria para onde cair quando o responsável não é reconhecido.
+    const email = (process.env.APP_ADMIN_EMAIL || '').trim().toLowerCase() || null;
 
     db.prepare(
-      "INSERT INTO usuarios (nome, login, senhaHash, papel, ativo) VALUES (?, ?, ?, 'admin', 1)"
-    ).run(['Administrador', login, hash]);
+      "INSERT INTO usuarios (nome, login, email, senhaHash, papel, ativo) VALUES (?, ?, ?, ?, 'admin', 1)"
+    ).run(['Administrador', login, email, hash]);
 
     console.log(`Usuário administrador criado: login "${login}", com a senha de APP_SENHA.`);
   } else {
