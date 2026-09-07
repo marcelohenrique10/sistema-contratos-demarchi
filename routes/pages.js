@@ -11,6 +11,7 @@ const upload = require('../services/upload');
 const retroativo = require('../services/retroativo');
 const reservas = require('../services/reservas');
 const formato = require('../services/formato');
+const documentoSvc = require('../services/documento');
 const caminhos = require('../caminhos');
 
 /**
@@ -673,35 +674,66 @@ router.get('/contratos', (req, res) => {
     const aguardando = op.contratos.filter((c) => c.status === 'pendente').length;
     return { ...op, concluidos, total: op.contratos.length, aguardando, statusGeral: concluidos === op.contratos.length ? 'Concluído' : 'Em andamento' };
   });
-  res.render('contratos', { operacoes, clientes, empreendimentos, unidades, anexado: Boolean(req.query.anexado), aproveitados: parseInt(req.query.aproveitados) || 0, formLink: FORM_URL });
+  res.render('contratos', {
+    operacoes, clientes, empreendimentos, unidades,
+    // Os modelos que de fato existem, e os conjuntos que a equipe pede junto.
+    catalogo: documentoSvc.CATALOGO,
+    conjuntos: documentoSvc.OPERACOES,
+    anexado: Boolean(req.query.anexado),
+    aproveitados: parseInt(req.query.aproveitados) || 0,
+    criados: parseInt(req.query.criados) || 0,
+    repetidos: req.query.repetidos || null,
+    erro: req.query.erro || null,
+    formLink: FORM_URL
+  });
 });
 
 router.post('/contratos/iniciar', (req, res) => {
-  const { clienteId, empreendimentoId, unidadeId, categoriaOperacao, observacoes } = req.body;
+  const { clienteId, empreendimentoId, unidadeId, observacoes } = req.body;
   const operacaoId = `op-${Date.now()}`;
-  const templatesMap = {
-    compra_venda: [
-      { nome: 'Contrato de Promessa de Compra e Venda', categoria: 'Compra e Venda' },
-      { nome: 'Anexo ao Contrato de Promessa de Compra e Venda', categoria: 'Anexo' },
-      { nome: 'Termo de Anuência com Outorga de Poderes', categoria: 'Termo' }
-    ],
-    permuta: [
-      { nome: 'Contrato de Permuta', categoria: 'Permuta' },
-      { nome: 'Termo de Ciência e Anuência', categoria: 'Termo' }
-    ],
-    reserva: [
-      { nome: 'Termo de Reserva', categoria: 'Reserva' }
-    ]
-  };
-  const templates = templatesMap[categoriaOperacao] || [];
+
+  // A tela manda os tipos marcados. Um só vem como string; vários, como array.
+  const marcados = [].concat(req.body.tipos || []).map((t) => String(t).trim()).filter(Boolean);
+
+  // Só entra o que tem modelo. Nome desconhecido viraria contrato pendente
+  // para sempre, porque o gerador não acharia o .docx.
+  const porTipo = new Map(documentoSvc.CATALOGO.map((m) => [m.tipo, m]));
+  const templates = marcados.filter((t) => porTipo.has(t)).map((t) => porTipo.get(t));
+  const recusados = marcados.filter((t) => !porTipo.has(t));
+
+  // Descartar em silêncio é como a tela antiga criava contrato impossível de
+  // gerar: alguém marcava, o sistema respondia "ok" e o documento nunca vinha.
+  if (recusados.length) {
+    return res.redirect('/contratos?erro=' + encodeURIComponent(
+      `Não existe modelo para: ${recusados.join(', ')}. Nada foi criado.`
+    ));
+  }
+
+  if (!templates.length) {
+    return res.redirect('/contratos?erro=' + encodeURIComponent('Escolha ao menos um documento.'));
+  }
+
   const FORM_LINK = FORM_URL;
   const ins = db.prepare(
     'INSERT INTO contratos (id, nome, categoria, status, formLink, empreendimentoId, unidadeId, clienteId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   );
-  const criados = templates.map((template, i) => {
+  // A operação é agrupada por cliente+unidade, então marcar de novo um tipo que
+  // já está lá acrescentaria uma segunda linha do mesmo documento. Só entra o
+  // que ainda não existe para esta dupla.
+  const jaExistem = new Set(
+    db.prepare(
+      'SELECT nome FROM contratos WHERE clienteId = ? AND ' + (unidadeId ? 'unidadeId = ?' : 'unidadeId IS NULL')
+    ).all(unidadeId ? [parseInt(clienteId), parseInt(unidadeId)] : [parseInt(clienteId)])
+      .map((c) => String(c.nome).trim())
+  );
+
+  const novos = templates.filter((t) => !jaExistem.has(t.tipo));
+  const repetidos = templates.filter((t) => jaExistem.has(t.tipo));
+
+  const criados = novos.map((template, i) => {
     const id = `${operacaoId}-${i}`;
-    ins.run([ id, template.nome, template.categoria, 'pendente', FORM_LINK, empreendimentoId, unidadeId ? parseInt(unidadeId) : null, parseInt(clienteId) ]);
-    return { id, nome: template.nome };
+    ins.run([ id, template.tipo, template.categoria, 'pendente', FORM_LINK, empreendimentoId, unidadeId ? parseInt(unidadeId) : null, parseInt(clienteId) ]);
+    return { id, nome: template.tipo };
   });
   // O formulário pode ter chegado antes desta operação existir. Se o documento
   // já está pronto, o pendente adota em vez de ficar esperando à toa.
@@ -709,8 +741,12 @@ router.post('/contratos/iniciar', (req, res) => {
   if (unidadeId) {
     db.prepare('UPDATE unidades SET status = ?, clienteId = ? WHERE id = ?').run([ 'negociacao', parseInt(clienteId), parseInt(unidadeId) ]);
   }
-  const qs = aproveitados.length ? `?aproveitados=${aproveitados.length}` : '';
-  res.redirect(`/contratos${qs}`);
+  const qs = new URLSearchParams();
+  if (aproveitados.length) qs.set('aproveitados', aproveitados.length);
+  if (criados.length) qs.set('criados', criados.length);
+  // Silenciar a repetição faria a tela parecer que ignorou o clique.
+  if (repetidos.length) qs.set('repetidos', repetidos.map((t) => t.tipo).join(' · '));
+  res.redirect(`/contratos${qs.toString() ? `?${qs}` : ''}`);
 });
 
 router.get('/financeiro', (req, res) => {

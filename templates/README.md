@@ -73,6 +73,10 @@ jurídica). Onde fala do empreendimento como obra, use `NOME`.
 |---|---|
 | `[PRECO_TOTAL]` | Preço total do imóvel — o "R$ " é acrescentado se faltar |
 | `[PRECO_TOTAL_EXTENSO]` | Preço total por extenso |
+| `[VALOR_FRACAO_IDEAL]` | Valor da fração ideal do terreno — cláusula 1.4 |
+| `[VALOR_FRACAO_IDEAL_EXTENSO]` | O mesmo por extenso |
+| `[VALOR_CUSTO_CONSTRUCAO]` | Custo de construção — cláusula 3.2 |
+| `[VALOR_CUSTO_CONSTRUCAO_EXTENSO]` | O mesmo por extenso |
 | `[FORMA_AQUISICAO]` | Vira "parcelada" ou "à vista" para caber na frase |
 | `[DOC_DATA]` | Data do documento |
 | `[DOC_DIA]` / `[DOC_MES]` / `[DOC_ANO]` | Data quebrada (usado só no SCP) |

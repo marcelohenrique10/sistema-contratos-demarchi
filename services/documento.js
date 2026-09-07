@@ -16,6 +16,93 @@ const MODELOS = {
   'Termo de Adesão Preliminar SCP': 'termo-adesao-preliminar-scp.docx'
 };
 
+/**
+ * Os mesmos modelos, com o que a tela de contratos precisa mostrar.
+ *
+ * A tela já teve uma lista própria, escrita à mão, e ela divergiu: oferecia
+ * "Contrato de Permuta" e "Termo de Reserva", que não têm modelo, e um
+ * "Termo de Ciência e Anuência" cujo nome não batia com o daqui. Os contratos
+ * criados assim nasciam impossíveis de gerar. Por isso agora é uma lista só.
+ */
+const CATALOGO = [
+  {
+    tipo: 'Contrato de Promessa de Compra e Venda',
+    categoria: 'Compra e Venda',
+    resumo: 'O contrato principal da venda: preço, parcelas e unidade.'
+  },
+  {
+    tipo: 'Anexo ao Contrato de Promessa de Compra e Venda',
+    categoria: 'Anexo',
+    resumo: 'Complementa o contrato principal com o detalhamento da unidade.'
+  },
+  {
+    tipo: 'Termo de Anuência com Outorga de Poderes',
+    categoria: 'Termo',
+    resumo: 'Autoriza a incorporadora a representar o comprador nos atos da obra.'
+  },
+  {
+    tipo: 'Termo de Ciência e Anuência para Empréstimo',
+    categoria: 'Termo',
+    resumo: 'Para quando há instituição credora financiando a operação.'
+  },
+  {
+    tipo: 'Termo de Adesão Preliminar SCP',
+    categoria: 'Termo',
+    resumo: 'Adesão à Sociedade em Conta de Participação do empreendimento.'
+  }
+];
+
+// Divergir de novo custaria contrato impossível de gerar, e só apareceria
+// semanas depois. Falhar ao subir é mais barato.
+(() => {
+  const noCatalogo = CATALOGO.map((m) => m.tipo).sort();
+  const nosModelos = Object.keys(MODELOS).sort();
+  const diferenca = noCatalogo.filter((t) => !nosModelos.includes(t))
+    .concat(nosModelos.filter((t) => !noCatalogo.includes(t)));
+
+  if (diferenca.length) {
+    throw new Error(`CATALOGO e MODELOS divergem em: ${diferenca.join(', ')}`);
+  }
+})();
+
+/**
+ * Conjuntos que a equipe pede junto no dia a dia. São atalho, não regra: a
+ * tela deixa marcar qualquer combinação. Só podem citar tipos do CATALOGO.
+ */
+const OPERACOES = {
+  compra_venda: {
+    nome: 'Compra e Venda',
+    tipos: [
+      'Contrato de Promessa de Compra e Venda',
+      'Anexo ao Contrato de Promessa de Compra e Venda',
+      'Termo de Anuência com Outorga de Poderes'
+    ]
+  },
+  compra_venda_financiada: {
+    nome: 'Compra e Venda com financiamento',
+    tipos: [
+      'Contrato de Promessa de Compra e Venda',
+      'Anexo ao Contrato de Promessa de Compra e Venda',
+      'Termo de Anuência com Outorga de Poderes',
+      'Termo de Ciência e Anuência para Empréstimo'
+    ]
+  },
+  scp: {
+    nome: 'Adesão à SCP',
+    tipos: ['Termo de Adesão Preliminar SCP']
+  }
+};
+
+(() => {
+  const conhecidos = CATALOGO.map((m) => m.tipo);
+  Object.entries(OPERACOES).forEach(([chave, op]) => {
+    const orfaos = op.tipos.filter((t) => !conhecidos.includes(t));
+    if (orfaos.length) {
+      throw new Error(`A operação "${chave}" cita tipo sem modelo: ${orfaos.join(', ')}`);
+    }
+  });
+})();
+
 const MESES = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
@@ -121,6 +208,14 @@ function montarValores(documento, empreendimento, extras = {}) {
     PRECO_TOTAL: comReal(compraVenda.precoTotal),
     PRECO_TOTAL_EXTENSO: compraVenda.precoExtenso,
     FORMA_AQUISICAO: textoFormaAquisicao(compraVenda.formaAquisicao),
+
+    // As cláusulas 1.4 e 3.2 abrem o preço total em duas parcelas: o que se
+    // paga pela fração ideal do terreno e o que se paga pela construção. São
+    // valores distintos do total, então vêm do formulário, não daqui.
+    VALOR_FRACAO_IDEAL: comReal(compraVenda.valorFracaoIdeal),
+    VALOR_FRACAO_IDEAL_EXTENSO: compraVenda.valorFracaoIdealExtenso,
+    VALOR_CUSTO_CONSTRUCAO: comReal(compraVenda.valorCustoConstrucao),
+    VALOR_CUSTO_CONSTRUCAO_EXTENSO: compraVenda.valorCustoConstrucaoExtenso,
 
     // Nem todo tipo de documento traz bloco de unidade (o Termo de Anuência,
     // por exemplo), mas o número sempre chega junto do payload.
@@ -349,6 +444,6 @@ async function gerarDocumento({ documento, empreendimento, empreendimentoId, uni
 }
 
 module.exports = {
-  gerarDocumento, MODELOS, montarValores, conferirPreenchimento,
+  gerarDocumento, MODELOS, CATALOGO, OPERACOES, montarValores, conferirPreenchimento,
   parsearData, formatarData, adicionarMeses
 };

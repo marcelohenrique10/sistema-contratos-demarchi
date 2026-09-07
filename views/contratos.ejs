@@ -25,10 +25,32 @@
     </div>
   <% } %>
 
+  <% if (erro) { %>
+    <div style="background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; padding: 12px; border-radius: 8px; margin-bottom: 20px;">
+      <%= erro %>
+    </div>
+  <% } %>
+
+  <% if (criados > 0) { %>
+    <div style="background: #dcfce7; color: #15803d; padding: 12px; border-radius: 8px; margin-bottom: 20px;">
+      <%= criados %> <%= criados === 1 ? 'documento adicionado' : 'documentos adicionados' %> à operação.
+    </div>
+  <% } %>
+
+  <% if (repetidos) { %>
+    <div style="background: #fffbeb; color: #92400e; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px;">
+      Já existia nesta operação, então não foi criado de novo: <strong><%= repetidos %></strong>.
+    </div>
+  <% } %>
+
   <!-- Formulário de Nova Operação -->
   <div class="form-card">
     <h3>Iniciar nova operação</h3>
-    <p style="color: #6b7280; font-size: 14px; margin-top: -10px; margin-bottom: 20px;">Selecione cliente, unidade e categoria para gerar os contratos automaticamente.</p>
+    <p style="color: #6b7280; font-size: 14px; margin-top: -10px; margin-bottom: 20px;">
+      Selecione o cliente, a unidade e quais documentos essa operação precisa.
+      Marcar de novo um documento que já existe para este cliente e unidade não duplica —
+      ele é acrescentado à operação que já está em andamento.
+    </p>
     
     <form method="POST" action="/contratos/iniciar">
       <div class="form-grid">
@@ -59,13 +81,39 @@
           </select>
         </div>
 
-        <div class="form-group">
-          <label>Categoria da operação</label>
-          <select name="categoriaOperacao" required>
-            <option value="compra_venda">Compra e Venda (3 documentos)</option>
-            <option value="permuta">Permuta (2 documentos)</option>
-            <option value="reserva">Reserva (1 documento)</option>
-          </select>
+        <div class="form-group full">
+          <label>Documentos desta operação</label>
+          <p style="margin: 0 0 10px; font-size: 13px; color: #6b7280;">
+            Marque quantos precisar. Os conjuntos abaixo só marcam as caixas por você —
+            dá para ajustar depois de clicar.
+          </p>
+
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;">
+            <% Object.entries(conjuntos).forEach(([chave, conj]) => { %>
+              <button type="button" class="button secondary conjunto"
+                      data-tipos="<%= JSON.stringify(conj.tipos) %>"
+                      style="font-size: 12px; padding: 5px 12px;">
+                <%= conj.nome %> (<%= conj.tipos.length %>)
+              </button>
+            <% }) %>
+            <button type="button" class="button secondary" id="limpar-tipos"
+                    style="font-size: 12px; padding: 5px 12px;">Limpar</button>
+          </div>
+
+          <div style="display: grid; gap: 8px;">
+            <% catalogo.forEach((m, i) => { %>
+              <label for="tipo-<%= i %>"
+                     style="display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px;
+                            border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; font-weight: 400;">
+                <input type="checkbox" name="tipos" id="tipo-<%= i %>" class="tipo-doc"
+                       value="<%= m.tipo %>" style="margin-top: 3px; width: auto;" />
+                <span>
+                  <strong style="font-size: 14px;"><%= m.tipo %></strong>
+                  <span style="display: block; font-size: 12px; color: #6b7280; margin-top: 2px;"><%= m.resumo %></span>
+                </span>
+              </label>
+            <% }) %>
+          </div>
         </div>
 
         <div class="form-group full">
@@ -215,6 +263,32 @@
       opt.textContent = `Unidade ${u.numero} (${u.status === 'livre' ? 'Livre' : 'Ocupada/Negociação'})`;
       selectUnidade.appendChild(opt);
     });
+  });
+
+  // Os conjuntos só marcam as caixas: o que vale é o que está marcado na hora
+  // de enviar, então dá para usar um atalho e ajustar em seguida.
+  const caixasDeTipo = Array.from(document.querySelectorAll('.tipo-doc'));
+
+  document.querySelectorAll('.conjunto').forEach(function (botao) {
+    botao.addEventListener('click', function () {
+      const tipos = JSON.parse(this.dataset.tipos);
+      caixasDeTipo.forEach(function (caixa) {
+        caixa.checked = tipos.indexOf(caixa.value) !== -1;
+      });
+    });
+  });
+
+  document.getElementById('limpar-tipos').addEventListener('click', function () {
+    caixasDeTipo.forEach(function (caixa) { caixa.checked = false; });
+  });
+
+  // O navegador não valida um grupo de checkboxes; sem isto o envio vazio só
+  // seria recusado no servidor, depois de recarregar a página.
+  document.querySelector('form[action="/contratos/iniciar"]').addEventListener('submit', function (evento) {
+    if (!caixasDeTipo.some(function (caixa) { return caixa.checked; })) {
+      evento.preventDefault();
+      alert('Marque ao menos um documento para esta operação.');
+    }
   });
 </script>
 

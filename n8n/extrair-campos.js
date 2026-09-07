@@ -153,6 +153,11 @@ const compraVenda = {
   unidade,
   precoTotal: v('Preço total do imóvel (R$)'),
   precoExtenso: v('Preço total por extenso'),
+  // Cláusulas 1.4 e 3.2: o total aberto em terreno + construção.
+  valorFracaoIdeal: v('Valor da fração ideal do terreno (R$)'),
+  valorFracaoIdealExtenso: v('Valor da fração ideal do terreno por extenso'),
+  valorCustoConstrucao: v('Custo de construção (R$)'),
+  valorCustoConstrucaoExtenso: v('Custo de construção por extenso'),
   formaAquisicao,
   aVista,
   qtdTiposParcelas: v('Quantos tipos de parcelas existem nesta negociação?'),

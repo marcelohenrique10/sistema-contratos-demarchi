@@ -1,14 +1,29 @@
 /**
- * Gera o Formulário Contratual De Marchi completo.
+ * Formulário Contratual De Marchi — criação e manutenção.
+ *
+ * QUAL FUNÇÃO RODAR
+ *
+ *   Já existe um formulário em uso?  ->  atualizarFormulario()
+ *       Acrescenta só as perguntas que faltam, no lugar certo. Mantém a
+ *       planilha de respostas, e portanto o gatilho do n8n. Pode rodar
+ *       quantas vezes quiser.
+ *
+ *   Está começando do zero?  ->  criarFormularioContratual()
+ *       Cria um formulário novo, completo. Gera uma planilha NOVA, então o
+ *       gatilho do n8n precisa ser repontado.
+ *
+ *   Conferências:
+ *       verificarDocumentosOferecidos()  — os 5 tipos com modelo estão lá?
+ *       verificarTitulosDuplicados(url)  — algum título repetido?
+ *       sincronizarEmpreendimentos()     — atualiza o menu de empreendimentos
  *
  * COMO USAR
  *   1. Acesse script.google.com → Novo projeto
  *   2. Cole este arquivo inteiro
- *   3. Selecione a função "criarFormularioContratual" e clique em Executar
- *   4. Autorize quando o Google pedir (é a sua conta criando um formulário seu)
- *   5. Veja o log (Ctrl+Enter) com o link de edição e o de resposta
- *
- * O formulário ATUAL não é tocado. Este script cria um novo, do zero.
+ *   3. Configurações do projeto → Propriedades do script → URL_FORM = URL de
+ *      edição do formulário (necessário para tudo menos criar do zero)
+ *   4. Selecione a função desejada e clique em Executar
+ *   5. Autorize quando o Google pedir e veja o log (Ctrl+Enter)
  *
  * REGRA IMPORTANTE
  *   Cada pergunta tem título ÚNICO. Títulos repetidos viram colunas com o
@@ -78,6 +93,11 @@ function criarFormularioContratual() {
 
   form.addTextItem()
     .setTitle('Responsável interno pelo preenchimento')
+    .setRequired(true);
+
+  form.addTextItem()
+    .setTitle('E-mail do responsável pelo preenchimento')
+    .setHelpText('Para cá vai o aviso de que o contrato ficou pronto.')
     .setRequired(true);
 
   // ------------------------------------------------------------------
@@ -170,6 +190,19 @@ function criarFormularioContratual() {
   form.addTextItem().setTitle('Preço total do imóvel (R$)')
     .setHelpText('Ex: R$ 733.000,00').setRequired(true);
   form.addTextItem().setTitle('Preço total por extenso').setRequired(true);
+
+  // Cláusulas 1.4 e 3.2 do contrato de compra e venda: o total aberto em
+  // terreno + construção. São valores distintos do total.
+  form.addTextItem().setTitle('Valor da fração ideal do terreno (R$)')
+    .setHelpText('Cláusula 1.4: quanto do preço corresponde ao terreno.')
+    .setRequired(true);
+  form.addTextItem().setTitle('Valor da fração ideal do terreno por extenso')
+    .setRequired(true);
+  form.addTextItem().setTitle('Custo de construção (R$)')
+    .setHelpText('Cláusula 3.2: quanto do preço corresponde à construção.')
+    .setRequired(true);
+  form.addTextItem().setTitle('Custo de construção por extenso')
+    .setRequired(true);
 
   var perguntaFormaAquisicao = form.addMultipleChoiceItem()
     .setTitle('Forma de aquisição')
@@ -324,6 +357,199 @@ function criarFormularioContratual() {
   Logger.log('');
   Logger.log('PROXIMO PASSO: no formulario, aba Respostas -> vincular a uma');
   Logger.log('planilha. Depois aponte o gatilho do n8n para essa planilha nova.');
+}
+
+
+// ============================================================================
+// ATUALIZAR O FORMULÁRIO QUE JÁ EXISTE
+// ============================================================================
+//
+// Use esta função, e NÃO criarFormularioContratual(), quando o formulário já
+// está em uso. Criar outro geraria uma planilha nova, e o gatilho do n8n
+// aponta para a planilha atual — trocar isso é retrabalho sem motivo.
+//
+// Ela acrescenta só o que está faltando, na posição certa, e pode ser rodada
+// quantas vezes quiser: o que já existe é deixado como está.
+//
+// CONFIGURAÇÃO
+//   Configurações do projeto -> Propriedades do script -> URL_FORM = URL de edição
+//   (a mesma propriedade que sincronizarEmpreendimentos já usa)
+
+// Cada campo diz depois de qual pergunta ele entra. A ordem aqui importa:
+// os quatro valores se encadeiam, cada um depois do anterior.
+var CAMPOS_A_ACRESCENTAR = [
+  {
+    titulo: 'E-mail do responsável pelo preenchimento',
+    ajuda: 'Para cá vai o aviso de que o contrato ficou pronto.',
+    obrigatorio: true,
+    depoisDe: 'Responsável interno pelo preenchimento'
+  },
+  {
+    titulo: 'Valor da fração ideal do terreno (R$)',
+    ajuda: 'Cláusula 1.4: quanto do preço corresponde ao terreno.',
+    obrigatorio: true,
+    depoisDe: 'Preço total por extenso'
+  },
+  {
+    titulo: 'Valor da fração ideal do terreno por extenso',
+    ajuda: '',
+    obrigatorio: true,
+    depoisDe: 'Valor da fração ideal do terreno (R$)'
+  },
+  {
+    titulo: 'Custo de construção (R$)',
+    ajuda: 'Cláusula 3.2: quanto do preço corresponde à construção.',
+    obrigatorio: true,
+    depoisDe: 'Valor da fração ideal do terreno por extenso'
+  },
+  {
+    titulo: 'Custo de construção por extenso',
+    ajuda: '',
+    obrigatorio: true,
+    depoisDe: 'Custo de construção (R$)'
+  }
+];
+
+function atualizarFormulario() {
+  var form = abrirFormulario();
+  Logger.log('Formulario: ' + form.getTitle());
+  Logger.log('');
+
+  // Antes de mexer, confere se todas as âncoras existem. Se alguma não estiver
+  // lá, o formulário não é o que este script espera — melhor parar sem gravar
+  // do que espalhar perguntas em lugar errado.
+  var faltandoAncora = [];
+  CAMPOS_A_ACRESCENTAR.forEach(function (campo) {
+    var ehNovo = CAMPOS_A_ACRESCENTAR.some(function (c) { return c.titulo === campo.depoisDe; });
+    if (!ehNovo && !acharItem(form, campo.depoisDe)) faltandoAncora.push(campo.depoisDe);
+  });
+
+  if (faltandoAncora.length) {
+    throw new Error('Nada foi alterado. Não achei estas perguntas no formulário: ' +
+                    faltandoAncora.join(' | '));
+  }
+
+  var criados = [];
+  var jaExistiam = [];
+
+  CAMPOS_A_ACRESCENTAR.forEach(function (campo) {
+    if (acharItem(form, campo.titulo)) {
+      jaExistiam.push(campo.titulo);
+      return;
+    }
+
+    var novo = form.addTextItem().setTitle(campo.titulo).setRequired(campo.obrigatorio);
+    if (campo.ajuda) novo.setHelpText(campo.ajuda);
+
+    // addTextItem joga no fim; move para logo depois da âncora.
+    var ancora = acharItem(form, campo.depoisDe);
+    if (ancora) form.moveItem(novo.getIndex(), ancora.getIndex() + 1);
+
+    criados.push(campo.titulo);
+  });
+
+  Logger.log('Perguntas acrescentadas: ' + (criados.join(' | ') || 'nenhuma'));
+  Logger.log('Ja existiam            : ' + (jaExistiam.join(' | ') || 'nenhuma'));
+  Logger.log('');
+
+  if (criados.length) {
+    Logger.log('ATENCAO: cada pergunta nova vira uma COLUNA NOVA no fim da planilha');
+    Logger.log('de respostas. O n8n procura pelo titulo da coluna, nao pela posicao,');
+    Logger.log('entao nada quebra — mas o no "Extrair Campos" precisa estar');
+    Logger.log('atualizado (reimporte o producao-render.json).');
+  }
+
+  return { criados: criados, jaExistiam: jaExistiam };
+}
+
+/**
+ * Abre o formulário a partir da propriedade URL_FORM.
+ *
+ * Aceita o que a pessoa tiver em mãos — a URL de edição, a mesma sem o
+ * "/edit", ou só o identificador — porque essa é a parte da configuração em
+ * que é mais fácil errar, e o erro do FormApp não explica nada.
+ *
+ * O único endereço que NÃO serve é o público ("/forms/d/e/.../viewform"):
+ * ele identifica o formulário para quem responde, não o documento.
+ */
+function abrirFormulario() {
+  var valor = (PropertiesService.getScriptProperties().getProperty('URL_FORM') || '').trim();
+
+  if (!valor) {
+    throw new Error(
+      'URL_FORM nao esta configurada.\n' +
+      'Configuracoes do projeto -> Propriedades do script -> URL_FORM = ' +
+      'https://docs.google.com/forms/d/SEU_ID/edit'
+    );
+  }
+
+  if (valor.indexOf('/forms/d/e/') !== -1) {
+    throw new Error(
+      'URL_FORM tem o endereco PUBLICO (o de "/forms/d/e/.../viewform"), que serve\n' +
+      'para responder, nao para editar. Abra o formulario no modo de edicao e copie\n' +
+      'o endereco da barra: https://docs.google.com/forms/d/SEU_ID/edit'
+    );
+  }
+
+  // Tanto ".../forms/d/<id>/edit" quanto ".../forms/d/<id>" quanto só o <id>.
+  var casou = valor.match(/\/forms\/d\/([a-zA-Z0-9_-]+)/);
+  var id = casou ? casou[1] : (/^[a-zA-Z0-9_-]{20,}$/.test(valor) ? valor : null);
+
+  if (!id) {
+    throw new Error(
+      'Nao reconheci "' + valor + '" como formulario.\n' +
+      'Esperado: https://docs.google.com/forms/d/SEU_ID/edit'
+    );
+  }
+
+  try {
+    return FormApp.openById(id);
+  } catch (e) {
+    throw new Error(
+      'Achei o identificador "' + id + '", mas nao consegui abrir o formulario.\n' +
+      'Confira se ele existe e se esta na conta que roda este script.\n' +
+      'Mensagem original: ' + e.message
+    );
+  }
+}
+
+
+/** Acha um item pelo título exato, ignorando espaço nas pontas. */
+function acharItem(form, titulo) {
+  var alvo = String(titulo).trim();
+  var achado = null;
+  form.getItems().forEach(function (item) {
+    if (item.getTitle().trim() === alvo) achado = item;
+  });
+  return achado;
+}
+
+
+/**
+ * Confere se o formulário oferece os cinco documentos que têm modelo no
+ * sistema. Documento oferecido sem modelo gera contrato que nunca fica pronto.
+ */
+function verificarDocumentosOferecidos() {
+  var esperados = [TIPO_COMPRA_VENDA, TIPO_ANEXO, TIPO_ANUENCIA, TIPO_EMPRESTIMO, TIPO_SCP];
+  var pergunta = acharItem(abrirFormulario(), 'Qual documento você deseja gerar?');
+  if (!pergunta) throw new Error('Não achei a pergunta "Qual documento você deseja gerar?".');
+
+  var oferecidos = pergunta.asMultipleChoiceItem().getChoices().map(function (c) { return c.getValue(); });
+
+  var faltando = esperados.filter(function (t) { return oferecidos.indexOf(t) === -1; });
+  var sobrando = oferecidos.filter(function (t) { return esperados.indexOf(t) === -1; });
+
+  Logger.log('Oferecidos no formulario: ' + oferecidos.join(' | '));
+  Logger.log('Faltando (tem modelo, nao e oferecido): ' + (faltando.join(' | ') || 'nenhum'));
+  Logger.log('Sobrando (oferecido, SEM modelo): ' + (sobrando.join(' | ') || 'nenhum'));
+
+  if (sobrando.length) {
+    Logger.log('');
+    Logger.log('ATENCAO: os "sobrando" geram contrato que o sistema nunca consegue');
+    Logger.log('montar, porque nao existe .docx correspondente.');
+  }
+
+  return { oferecidos: oferecidos, faltando: faltando, sobrando: sobrando };
 }
 
 
