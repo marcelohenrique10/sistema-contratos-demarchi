@@ -120,6 +120,60 @@ function comReal(valor) {
   return /^r\$/i.test(texto) ? texto : `R$ ${texto}`;
 }
 
+/**
+ * A tabela "CONDIÇÕES E PRAZOS" do SCP tem cinco linhas fixas, mas o
+ * formulário coleta parcelas em cinco espaços genéricos, cada uma com o tipo
+ * escrito à mão ("Sinal", "Mensais", "Balão"...). Casamos uma coisa na outra
+ * pelo que a pessoa escreveu.
+ *
+ * Linha sem parcela correspondente fica em branco — e o aviso de campo em
+ * branco denuncia, que é melhor do que inventar número em contrato.
+ */
+const LINHAS_SCP = [
+  { chave: 'ENTRADA', reconhece: /entrada|sinal/i },
+  { chave: 'MENSAL', reconhece: /mensal|mensais/i },
+  { chave: 'INTERMEDIARIA', reconhece: /intermedi/i },
+  { chave: 'ANUAL', reconhece: /anual|anuais|bal[ãa]o/i },
+  { chave: 'CHAVE', reconhece: /chave/i }
+];
+
+/** "1.234,56" e "R$ 1.234,56" viram 1234.56. Devolve null se não der. */
+function numeroDeTexto(texto) {
+  const limpo = String(texto ?? '').replace(/[^\d,.-]/g, '').trim();
+  if (!limpo) return null;
+  const n = Number(limpo.includes(',') ? limpo.replace(/\./g, '').replace(',', '.') : limpo);
+  return Number.isFinite(n) ? n : null;
+}
+
+function emReal(numero) {
+  return `R$ ${numero.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function valoresDaTabelaScp(compraVenda) {
+  const parcelas = (compraVenda && compraVenda.parcelas) || [];
+  const valores = {};
+
+  LINHAS_SCP.forEach(({ chave, reconhece }) => {
+    const parcela = parcelas.find((p) => reconhece.test(String(p.tipo || '')));
+
+    if (!parcela) {
+      valores[`SCP_${chave}_QNTD`] = '';
+      valores[`SCP_${chave}_VALOR`] = '';
+      valores[`SCP_${chave}_TOTAL`] = '';
+      return;
+    }
+
+    const unitario = numeroDeTexto(parcela.valorUnitario);
+    const quantidade = parseInt(String(parcela.quantidade || '1').replace(/\D/g, ''), 10) || 1;
+
+    valores[`SCP_${chave}_QNTD`] = String(quantidade);
+    valores[`SCP_${chave}_VALOR`] = unitario === null ? '' : emReal(unitario);
+    valores[`SCP_${chave}_TOTAL`] = unitario === null ? '' : emReal(unitario * quantidade);
+  });
+
+  return valores;
+}
+
 // "Parcelado" / "À vista" -> como a frase do contrato pede: "de forma ..."
 function textoFormaAquisicao(forma) {
   const texto = String(forma ?? '').trim().toLowerCase();
@@ -229,6 +283,9 @@ function montarValores(documento, empreendimento, extras = {}) {
 
     DATA_COMPROMISSO_COMPRA_VENDA: formatarData(parsearData(geral.dataDocumento)),
     SCP_VALOR_ENTRADA: scp.valorEntrada,
+
+    // Tabela "CONDIÇÕES E PRAZOS" do SCP, montada a partir das parcelas.
+    ...valoresDaTabelaScp(compraVenda),
 
     TESTEMUNHA_1_NOME: testemunhas[0] ? testemunhas[0].nome : '',
     TESTEMUNHA_1_CPF: testemunhas[0] ? testemunhas[0].cpf : '',
@@ -366,6 +423,22 @@ const BLOCOS_CONDICIONAIS = [
 ];
 
 /**
+ * Empresa não tem nacionalidade, estado civil, profissão nem RG — quem tem
+ * é o representante legal, que ocupa um bloco à parte do documento. Cobrar
+ * esses campos num contrato de pessoa jurídica é alarme falso, e alarme
+ * falso ensina a ignorar o aviso.
+ */
+const CAMPOS_SO_DE_PESSOA_FISICA = [
+  'COMPRADOR_NACIONALIDADE', 'COMPRADOR_ESTADO_CIVIL', 'COMPRADOR_PROFISSAO',
+  'COMPRADOR_RG', 'COMPRADOR_ORGAO_EMISSOR'
+];
+
+/** O formulário só monta `representante` quando o contratante é PJ. */
+function ehPessoaJuridica(documento) {
+  return Boolean(documento && documento.representante && documento.representante.nome);
+}
+
+/**
  * Separa o que ficou em branco em duas listas: o que falta mesmo e o que
  * não se aplica a este documento.
  *
@@ -383,7 +456,11 @@ function conferirPreenchimento(valores, xml, documento) {
     .filter((b) => !b.presente(documento))
     .map((b) => b.prefixo);
 
-  const condicional = (chave) => ausentes.some((prefixo) => chave.startsWith(prefixo));
+  const pj = ehPessoaJuridica(documento);
+
+  const condicional = (chave) =>
+    ausentes.some((prefixo) => chave.startsWith(prefixo))
+    || (pj && CAMPOS_SO_DE_PESSOA_FISICA.includes(chave));
 
   return {
     faltando: vazios.filter((c) => !condicional(c)),

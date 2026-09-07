@@ -195,7 +195,10 @@ const blocosPorTipo = {
   'Anexo ao Contrato de Promessa de Compra e Venda': { anexo: { tipoUnidade: unidade.tipo, numeroUnidade: unidade.numero, numeroUnidadeExtenso: unidade.numeroExtenso } },
   'Termo de Anuência com Outorga de Poderes': {},
   'Termo de Ciência e Anuência para Empréstimo': { emprestimo },
-  'Termo de Adesão Preliminar SCP': { scp },
+  // O SCP leva compraVenda junto por causa da tabela "CONDIÇÕES E PRAZOS",
+  // que é o parcelamento do aporte — entrada, mensais, intermediárias,
+  // anuais e chaves. Sem isso a tabela do documento sai vazia.
+  'Termo de Adesão Preliminar SCP': { scp, compraVenda },
 };
 
 return [{

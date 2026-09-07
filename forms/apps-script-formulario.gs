@@ -340,7 +340,11 @@ function criarFormularioContratual() {
 
   secParcelas.setGoToPage(secIntermediadora);
   secEmprestimo.setGoToPage(secIntermediadora);
-  secScp.setGoToPage(secIntermediadora);
+
+  // O SCP tem a tabela "CONDIÇÕES E PRAZOS", que é o parcelamento do aporte.
+  // Por isso ele passa pelo Parcelamento antes de seguir; sem isso a tabela
+  // do documento sai vazia.
+  secScp.setGoToPage(secParcelas);
 
   perguntaIntermediadora.setChoices([
     perguntaIntermediadora.createChoice('Sim', secIntermediadoraDados),
@@ -457,9 +461,52 @@ function atualizarFormulario() {
     Logger.log('de respostas. O n8n procura pelo titulo da coluna, nao pela posicao,');
     Logger.log('entao nada quebra — mas o no "Extrair Campos" precisa estar');
     Logger.log('atualizado (reimporte o producao-render.json).');
+    Logger.log('');
   }
 
-  return { criados: criados, jaExistiam: jaExistiam };
+  var roteamento = corrigirRoteamentoScp(form);
+
+  return { criados: criados, jaExistiam: jaExistiam, roteamentoScp: roteamento };
+}
+
+
+/**
+ * Faz o caminho do SCP passar pelo Parcelamento.
+ *
+ * A tabela "CONDIÇÕES E PRAZOS" do Termo de Adesão é o parcelamento do aporte
+ * — entrada, mensais, intermediárias, anuais, chaves. Como o formulário
+ * mandava o SCP direto para a Intermediação, esses dados nunca eram
+ * perguntados e a tabela saía vazia.
+ *
+ * Recebe o formulário já aberto; chamada por atualizarFormulario().
+ */
+function corrigirRoteamentoScp(form) {
+  var paginaScp = null;
+  var paginaParcelas = null;
+
+  form.getItems(FormApp.ItemType.PAGE_BREAK).forEach(function (item) {
+    var titulo = item.getTitle().trim();
+    if (titulo === 'Dados da SCP') paginaScp = item.asPageBreakItem();
+    if (titulo === 'Parcelamento') paginaParcelas = item.asPageBreakItem();
+  });
+
+  if (!paginaScp || !paginaParcelas) {
+    Logger.log('Roteamento do SCP: NAO ajustado — nao achei a secao ' +
+               (!paginaScp ? '"Dados da SCP"' : '"Parcelamento"') + '.');
+    return { ajustado: false, motivo: 'secao nao encontrada' };
+  }
+
+  var destinoAtual = paginaScp.getGoToPage();
+  if (destinoAtual && destinoAtual.getTitle().trim() === 'Parcelamento') {
+    Logger.log('Roteamento do SCP: ja estava correto (segue para Parcelamento).');
+    return { ajustado: false, motivo: 'ja estava correto' };
+  }
+
+  paginaScp.setGoToPage(paginaParcelas);
+  Logger.log('Roteamento do SCP: ajustado. Depois de "Dados da SCP" o formulario');
+  Logger.log('agora passa por "Parcelamento" — e a tabela CONDICOES E PRAZOS do');
+  Logger.log('documento passa a ter dados.');
+  return { ajustado: true };
 }
 
 /**
