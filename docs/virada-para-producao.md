@@ -21,8 +21,17 @@ No dia em que **alguém cadastrar uma venda de verdade**. Não antes, não depoi
 
 No serviço do Render:
 
+- Trocar o plano de **Free** para **Starter, US$ 7/mês** (disco não existe no
+  gratuito, e o gratuito ainda hiberna após 15 min sem uso)
 - *Disks* → *Add Disk*, montado em `/var/data`, 1 GB já sobra
-- Trocar o plano de **Free** para **$7 / month** (disco não existe no gratuito)
+
+O disco é **cobrado à parte** da instância: US$ 0,25 por GB por mês,
+proporcional ao tempo de uso. Então o custo do Render fica em torno de
+**US$ 7,25/mês**, não US$ 7,00.
+
+> Serviço com disco não faz publicação sem interrupção: o Render derruba a
+> instância antiga antes de subir a nova, e o sistema fica fora do ar por
+> alguns segundos a cada deploy. Para uso interno, irrelevante.
 
 ### 2. Apontar os dados para o disco
 
