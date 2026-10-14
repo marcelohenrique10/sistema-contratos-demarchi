@@ -702,10 +702,11 @@ router.get('/contratos', (req, res) => {
   });
   res.render('contratos', {
     operacoes, clientes, empreendimentos, unidades,
-    // Só o que nasce do formulário entra nas caixas de seleção. Quitação e
-    // distrato são gerados pelo sistema no fim da operação, não escolhidos
-    // no começo dela.
-    catalogo: documentoSvc.CATALOGO.filter((m) => m.origem === 'formulario'),
+    // Os sete numa lista só. Os de encerramento não viram pendente: a rota
+    // os gera na hora. Corretor não os enxerga — o distrato desfaz venda.
+    catalogo: res.locals.ehAdmin
+      ? documentoSvc.CATALOGO
+      : documentoSvc.CATALOGO.filter((m) => m.origem === 'formulario'),
     conjuntos: documentoSvc.OPERACOES,
     anexado: Boolean(req.query.anexado),
     aproveitados: parseInt(req.query.aproveitados) || 0,
@@ -717,7 +718,7 @@ router.get('/contratos', (req, res) => {
   });
 });
 
-router.post('/contratos/iniciar', (req, res) => {
+router.post('/contratos/iniciar', async (req, res) => {
   const { clienteId, empreendimentoId, unidadeId, observacoes } = req.body;
   const operacaoId = `op-${Date.now()}`;
 
@@ -740,6 +741,49 @@ router.post('/contratos/iniciar', (req, res) => {
 
   if (!templates.length) {
     return res.redirect('/contratos?erro=' + encodeURIComponent('Escolha ao menos um documento.'));
+  }
+
+  // --- documentos de encerramento ---
+  //
+  // Quitação e distrato aparecem na mesma lista dos outros, mas não viram
+  // pendente esperando formulário: são montados na hora, do cadastro e do
+  // financeiro. As travas abaixo existem porque um encerra a operação.
+  const deEncerramento = templates.filter((t) => t.origem === 'sistema');
+  const deFormulario = templates.filter((t) => t.origem === 'formulario');
+
+  if (deEncerramento.length) {
+    if (!res.locals.ehAdmin) {
+      return res.redirect('/contratos?erro=' + encodeURIComponent(
+        'Termo de quitação e distrato são emitidos pela administração.'
+      ));
+    }
+    if (deFormulario.length) {
+      return res.redirect('/contratos?erro=' + encodeURIComponent(
+        'Documento de encerramento é emitido sozinho — um abre a operação, o outro encerra. Nada foi criado.'
+      ));
+    }
+    if (deEncerramento.length > 1) {
+      return res.redirect('/contratos?erro=' + encodeURIComponent(
+        'Quitação e distrato se excluem: um declara o pagamento integral, o outro desfaz a venda.'
+      ));
+    }
+
+    const alvo = { clienteId, unidadeId: unidadeId || null };
+    try {
+      if (deEncerramento[0].tipo === encerramento.QUITACAO) {
+        const r = await encerramento.gerarQuitacao(alvo);
+        return res.redirect('/contratos?aviso=' + encodeURIComponent(
+          `Termo de quitação gerado com ${r.parcelas} parcela(s) no quadro de pagamentos.`
+        ));
+      }
+      const r = await encerramento.gerarDistrato(alvo);
+      const partes = ['Distrato gerado.'];
+      if (r.unidadeLiberada) partes.push(`Unidade ${r.unidadeLiberada} voltou para livre.`);
+      if (r.parcelasCanceladas) partes.push(`${r.parcelasCanceladas} parcela(s) cancelada(s) no financeiro.`);
+      return res.redirect('/contratos?aviso=' + encodeURIComponent(partes.join(' ')));
+    } catch (e) {
+      return res.redirect('/contratos?erro=' + encodeURIComponent(e.message));
+    }
   }
 
   const FORM_LINK = FORM_URL;
@@ -836,44 +880,6 @@ router.get('/financeiro', (req, res) => {
     situacaoSelecionada: filtro || 'todas',
     erro: req.query.erro || null
   });
-});
-
-// ---------- Encerramento da operação ----------
-//
-// Quitação e distrato não passam pelo formulário: o sistema já tem cliente,
-// unidade e parcelas. São de admin porque um declara recebimento integral e o
-// outro desfaz a venda e devolve dinheiro.
-
-function voltarParaContratos(res, chave, valor) {
-  res.redirect(`/contratos?${chave}=${encodeURIComponent(valor)}`);
-}
-
-router.post('/operacoes/:clienteId/:unidadeId/quitacao', async (req, res) => {
-  try {
-    const r = await encerramento.gerarQuitacao({
-      clienteId: req.params.clienteId,
-      unidadeId: req.params.unidadeId === 'sem-unidade' ? null : req.params.unidadeId
-    });
-    voltarParaContratos(res, 'aviso',
-      `Termo de quitação gerado com ${r.parcelas} parcela(s) no quadro de pagamentos.`);
-  } catch (e) {
-    voltarParaContratos(res, 'erro', e.message);
-  }
-});
-
-router.post('/operacoes/:clienteId/:unidadeId/distrato', async (req, res) => {
-  try {
-    const r = await encerramento.gerarDistrato({
-      clienteId: req.params.clienteId,
-      unidadeId: req.params.unidadeId === 'sem-unidade' ? null : req.params.unidadeId
-    });
-    const partes = ['Distrato gerado.'];
-    if (r.unidadeLiberada) partes.push(`Unidade ${r.unidadeLiberada} voltou para livre.`);
-    if (r.parcelasCanceladas) partes.push(`${r.parcelasCanceladas} parcela(s) cancelada(s) no financeiro.`);
-    voltarParaContratos(res, 'aviso', partes.join(' '));
-  } catch (e) {
-    voltarParaContratos(res, 'erro', e.message);
-  }
 });
 
 // ---------- Ações do financeiro ----------

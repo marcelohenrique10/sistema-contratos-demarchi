@@ -107,11 +107,23 @@
           </div>
 
           <div style="display: grid; gap: 8px;">
+            <% let separou = false; %>
             <% catalogo.forEach((m, i) => { %>
+              <% if (m.origem === 'sistema' && !separou) { separou = true; %>
+                <%# Estes encerram a operação: são montados na hora, do cadastro
+                    e do financeiro, e não esperam formulário. %>
+                <p style="margin: 10px 0 2px; font-size: 12px; font-weight: 600; color: #92400e;
+                          text-transform: uppercase; letter-spacing: .04em;">
+                  Encerram a operação — emitidos sozinhos
+                </p>
+              <% } %>
               <label for="tipo-<%= i %>"
                      style="display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px;
-                            border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; font-weight: 400;">
-                <input type="checkbox" name="tipos" id="tipo-<%= i %>" class="tipo-doc"
+                            border: 1px solid <%= m.origem === 'sistema' ? '#fcd9a4' : '#e5e7eb' %>;
+                            background: <%= m.origem === 'sistema' ? '#fffdf7' : 'transparent' %>;
+                            border-radius: 8px; cursor: pointer; font-weight: 400;">
+                <input type="checkbox" name="tipos" id="tipo-<%= i %>"
+                       class="tipo-doc<%= m.origem === 'sistema' ? ' tipo-encerramento' : '' %>"
                        value="<%= m.tipo %>" style="margin-top: 3px; width: auto;" />
                 <span>
                   <strong style="font-size: 14px;"><%= m.tipo %></strong>
@@ -159,23 +171,6 @@
             </span>
             <span style="font-size: 13px; color: #475569; font-weight: bold;"><%= op.concluidos %> de <%= op.total %> prontos</span>
 
-            <%# Quitação e distrato encerram a operação: o sistema monta os dois
-                a partir do cadastro e do financeiro, sem passar pelo formulário. %>
-            <% if (ehAdmin) { %>
-              <% const alvo = `/operacoes/${op.clienteId}/${op.unidadeId || 'sem-unidade'}`; %>
-              <form method="POST" action="<%= alvo %>/quitacao" class="inline-form"
-                    onsubmit="return confirm('Emitir o termo de quitação de <%= op.clienteNome %>?
-
-Ele declara ter recebido o valor integral. O quadro de pagamentos vem do Financeiro.')">
-                <button type="submit" class="button secondary" style="font-size: 12px; padding: 5px 10px;">Termo de quitação</button>
-              </form>
-              <form method="POST" action="<%= alvo %>/distrato" class="inline-form"
-                    onsubmit="return confirm('Emitir o distrato de <%= op.clienteNome %>?
-
-Isto libera a unidade, desassocia o cliente e cancela as parcelas ainda previstas no Financeiro.')">
-                <button type="submit" class="button danger" style="font-size: 12px; padding: 5px 10px;">Distrato</button>
-              </form>
-            <% } %>
           </div>
         </div>
 
@@ -304,6 +299,21 @@ Isto libera a unidade, desassocia o cliente e cancela as parcelas ainda prevista
 
   document.getElementById('limpar-tipos').addEventListener('click', function () {
     caixasDeTipo.forEach(function (caixa) { caixa.checked = false; });
+  });
+
+  // Encerramento não combina com documento de abertura, nem com outro
+  // encerramento. Em vez de deixar marcar e recusar no envio, a própria tela
+  // desmarca — fica claro na hora que são escolhas excludentes.
+  caixasDeTipo.forEach(function (caixa) {
+    caixa.addEventListener('change', function () {
+      if (!this.checked) return;
+      var ehEncerramento = this.classList.contains('tipo-encerramento');
+      caixasDeTipo.forEach(function (outra) {
+        if (outra === caixa) return;
+        var outraEhEncerramento = outra.classList.contains('tipo-encerramento');
+        if (ehEncerramento || outraEhEncerramento) outra.checked = false;
+      });
+    });
   });
 
   // O navegador não valida um grupo de checkboxes; sem isto o envio vazio só
