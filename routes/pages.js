@@ -550,9 +550,25 @@ router.post('/clientes/:id', (req, res) => {
       `/clientes/${id}/editar?erro=${encodeURIComponent(`Outro cliente já usa esse CPF/CNPJ: ${conflito.nome}`)}`
     );
   }
-  db.prepare(
-    'UPDATE clientes SET nome = ?, cpfCnpj = ?, telefone = ?, email = ?, tipo = ?, observacoes = ? WHERE id = ?'
-  ).run([nome, documento, telefone || null, email || null, tipo || 'Comprador', observacoes || null, id]);
+  // A qualificação alimenta os contratos e, no fim da operação, o termo de
+  // quitação e o distrato. Normalmente chega pelo formulário; aqui dá para
+  // completar ou corrigir à mão.
+  const QUALIFICACAO = ['nacionalidade', 'estadoCivil', 'profissao', 'rg', 'orgaoEmissorRg',
+    'endereco', 'cep', 'conjugeNome', 'conjugeCpf', 'conjugeRg', 'conjugeOrgaoEmissorRg',
+    'conjugeNacionalidade', 'conjugeProfissao', 'conjugeEstadoCivil', 'conjugeEmail'];
+
+  const colunas = ['nome', 'cpfCnpj', 'telefone', 'email', 'tipo', 'observacoes', ...QUALIFICACAO];
+  const valores = [
+    nome, documento, telefone || null, email || null, tipo || 'Comprador', observacoes || null,
+    ...QUALIFICACAO.map((c) => {
+      const v = String(req.body[c] ?? '').trim();
+      // Campo ausente no formulário enviado não apaga o que já estava lá.
+      return c in req.body ? (v || null) : (atual[c] ?? null);
+    })
+  ];
+
+  db.prepare(`UPDATE clientes SET ${colunas.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`)
+    .run([...valores, id]);
   res.redirect('/clientes');
 });
 

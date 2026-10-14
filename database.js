@@ -221,6 +221,74 @@ if (!colunasUnidades.includes('reservadoEm')) {
 }
 
 // Para onde vai o aviso de contrato pronto. No uso normal o login já é o
+// Recupera a qualificação dos clientes que já existiam.
+//
+// O formulário sempre mandou nacionalidade, estado civil, RG e endereço — o
+// sistema usava no documento e descartava. Mas o payload inteiro ficou
+// guardado em webhook_logs, então dá para preencher o que falta sem pedir
+// nada a ninguém. Só completa campo vazio: cadastro feito à mão vale mais.
+try {
+  const semQualificacao = db.prepare(
+    "SELECT id, cpfCnpj FROM clientes WHERE nacionalidade IS NULL OR nacionalidade = ''"
+  ).all();
+
+  if (semQualificacao.length) {
+    const DO_COMPRADOR = {
+      nacionalidade: 'nacionalidade', estadoCivil: 'estadoCivil', profissao: 'profissao',
+      rg: 'rg', orgaoEmissorRg: 'orgaoEmissorRg', endereco: 'endereco', cep: 'cep'
+    };
+    const DO_CONJUGE = {
+      conjugeNome: 'nome', conjugeCpf: 'cpf', conjugeRg: 'rg',
+      conjugeOrgaoEmissorRg: 'orgaoEmissorRg', conjugeNacionalidade: 'nacionalidade',
+      conjugeProfissao: 'profissao', conjugeEstadoCivil: 'estadoCivil', conjugeEmail: 'email'
+    };
+    const soDigitos = (v) => String(v || '').replace(/\D/g, '');
+
+    const logs = db.prepare(
+      "SELECT payload FROM webhook_logs WHERE tipo = 'documento' AND status = 'sucesso' ORDER BY id DESC"
+    ).all();
+
+    let recuperados = 0;
+
+    semQualificacao.forEach((cliente) => {
+      const alvo = soDigitos(cliente.cpfCnpj);
+      if (!alvo) return;
+
+      for (const log of logs) {
+        let doc;
+        try { doc = (JSON.parse(log.payload) || {}).documento; } catch (_) { continue; }
+        const comprador = (doc || {}).comprador || {};
+        if (soDigitos(comprador.cpf) !== alvo) continue;
+
+        const conjuge = doc.conjuge || {};
+        const campos = {};
+        Object.entries(DO_COMPRADOR).forEach(([coluna, chave]) => {
+          if (String(comprador[chave] || '').trim()) campos[coluna] = String(comprador[chave]).trim();
+        });
+        Object.entries(DO_CONJUGE).forEach(([coluna, chave]) => {
+          if (String(conjuge[chave] || '').trim()) campos[coluna] = String(conjuge[chave]).trim();
+        });
+
+        const entradas = Object.entries(campos);
+        if (!entradas.length) break;
+
+        const sets = entradas.map(([k]) => `${k} = COALESCE(NULLIF(${k}, ''), ?)`).join(', ');
+        db.prepare(`UPDATE clientes SET ${sets} WHERE id = ?`)
+          .run([...entradas.map(([, v]) => v), cliente.id]);
+        recuperados++;
+        break;
+      }
+    });
+
+    if (recuperados) {
+      console.log(`Qualificação recuperada do histórico para ${recuperados} cliente(s).`);
+    }
+  }
+} catch (erro) {
+  // Recuperar é um bônus: falhar aqui não pode impedir o sistema de subir.
+  console.warn('Não foi possível recuperar a qualificação do histórico: ' + erro.message);
+}
+
 // Dados que o Termo de Quitação e o Distrato pedem e que antes viviam
 // escritos dentro dos modelos. Trazer para o cadastro é o que permite ter um
 // segundo empreendimento sem que o documento saia com a conta bancária do

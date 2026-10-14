@@ -50,6 +50,79 @@
       </div>
     </div>
 
+  <h3 style="margin-top:26px;">Qualificação</h3>
+  <p style="color:#6b7280;font-size:14px;margin-top:-8px;">
+    É o que entra na parte "DAS PARTES" dos contratos e, no fim da operação, no
+    termo de quitação e no distrato. Chega preenchida pelo formulário; aqui dá
+    para completar ou corrigir.
+  </p>
+  <div class="form-grid">
+      <div class="form-group">
+        <label for="nacionalidade">Nacionalidade</label>
+        <input type="text" id="nacionalidade" name="nacionalidade" value="<%= cliente.nacionalidade || '' %>" placeholder="brasileiro(a)" />
+      </div>
+      <div class="form-group">
+        <label for="estadoCivil">Estado civil</label>
+        <input type="text" id="estadoCivil" name="estadoCivil" value="<%= cliente.estadoCivil || '' %>" />
+      </div>
+      <div class="form-group">
+        <label for="profissao">Profissão</label>
+        <input type="text" id="profissao" name="profissao" value="<%= cliente.profissao || '' %>" />
+      </div>
+      <div class="form-group">
+        <label for="rg">RG</label>
+        <input type="text" id="rg" name="rg" value="<%= cliente.rg || '' %>" />
+      </div>
+      <div class="form-group">
+        <label for="orgaoEmissorRg">Órgão emissor do RG</label>
+        <input type="text" id="orgaoEmissorRg" name="orgaoEmissorRg" value="<%= cliente.orgaoEmissorRg || '' %>" placeholder="SSP/ES" />
+      </div>
+      <div class="form-group">
+        <label for="cep">CEP</label>
+        <input type="text" id="cep" name="cep" value="<%= cliente.cep || '' %>" />
+      </div>
+      <div class="form-group full">
+        <label for="endereco">Endereço completo</label>
+        <input type="text" id="endereco" name="endereco" value="<%= cliente.endereco || '' %>" />
+      </div>
+  </div>
+
+  <h3 style="margin-top:26px;">Cônjuge <span style="color:#6b7280;font-weight:400;font-size:14px;">(se constar no documento)</span></h3>
+  <div class="form-grid">
+      <div class="form-group">
+        <label for="conjugeNome">Nome completo</label>
+        <input type="text" id="conjugeNome" name="conjugeNome" value="<%= cliente.conjugeNome || '' %>" />
+      </div>
+      <div class="form-group">
+        <label for="conjugeCpf">CPF</label>
+        <input type="text" id="conjugeCpf" name="conjugeCpf" value="<%= cliente.conjugeCpf || '' %>" />
+      </div>
+      <div class="form-group">
+        <label for="conjugeRg">RG</label>
+        <input type="text" id="conjugeRg" name="conjugeRg" value="<%= cliente.conjugeRg || '' %>" />
+      </div>
+      <div class="form-group">
+        <label for="conjugeOrgaoEmissorRg">Órgão emissor do RG</label>
+        <input type="text" id="conjugeOrgaoEmissorRg" name="conjugeOrgaoEmissorRg" value="<%= cliente.conjugeOrgaoEmissorRg || '' %>" />
+      </div>
+      <div class="form-group">
+        <label for="conjugeNacionalidade">Nacionalidade</label>
+        <input type="text" id="conjugeNacionalidade" name="conjugeNacionalidade" value="<%= cliente.conjugeNacionalidade || '' %>" />
+      </div>
+      <div class="form-group">
+        <label for="conjugeProfissao">Profissão</label>
+        <input type="text" id="conjugeProfissao" name="conjugeProfissao" value="<%= cliente.conjugeProfissao || '' %>" />
+      </div>
+      <div class="form-group">
+        <label for="conjugeEstadoCivil">Estado civil</label>
+        <input type="text" id="conjugeEstadoCivil" name="conjugeEstadoCivil" value="<%= cliente.conjugeEstadoCivil || '' %>" />
+      </div>
+      <div class="form-group">
+        <label for="conjugeEmail">E-mail</label>
+        <input type="text" id="conjugeEmail" name="conjugeEmail" value="<%= cliente.conjugeEmail || '' %>" />
+      </div>
+  </div>
+
     <div class="actions" style="margin-top:16px;">
       <button type="submit" class="button">Salvar alterações</button>
       <a class="button secondary" href="/clientes">Cancelar</a>
