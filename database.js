@@ -194,6 +194,22 @@ if (!colunasClientes.includes('criadoPor')) {
   db.exec('ALTER TABLE clientes ADD COLUMN criadoPor INTEGER');
 }
 
+// Qualificação completa do comprador e do cônjuge.
+//
+// O formulário sempre coletou isto, o contrato sempre usou — mas só o arquivo
+// gerado guardava. Meses depois, na hora da quitação ou do distrato, não havia
+// de onde tirar. Agora o webhook grava junto com o documento, e os documentos
+// de encerramento nascem sem precisar de formulário nenhum.
+[
+  'nacionalidade', 'estadoCivil', 'profissao', 'rg', 'orgaoEmissorRg', 'endereco', 'cep',
+  'conjugeNome', 'conjugeCpf', 'conjugeRg', 'conjugeOrgaoEmissorRg',
+  'conjugeNacionalidade', 'conjugeProfissao', 'conjugeEstadoCivil', 'conjugeEmail'
+].forEach((coluna) => {
+  if (!colunasClientes.includes(coluna)) {
+    db.exec(`ALTER TABLE clientes ADD COLUMN ${coluna} TEXT`);
+  }
+});
+
 // Quem reservou a unidade e quando. Sem isso, "quem chegou primeiro" — que é
 // disputa de comissão — não tem resposta.
 const colunasUnidades = db.prepare('PRAGMA table_info(unidades)').all().map((c) => c.name);
@@ -205,6 +221,23 @@ if (!colunasUnidades.includes('reservadoEm')) {
 }
 
 // Para onde vai o aviso de contrato pronto. No uso normal o login já é o
+// Dados que o Termo de Quitação e o Distrato pedem e que antes viviam
+// escritos dentro dos modelos. Trazer para o cadastro é o que permite ter um
+// segundo empreendimento sem que o documento saia com a conta bancária do
+// primeiro.
+const colunasEmpreendimentos = db.prepare('PRAGMA table_info(empreendimentos)').all().map((c) => c.name);
+[
+  'nomeFantasia', 'telefone', 'site',
+  // Conta vinculada ao empreendimento, citada nos termos
+  'banco', 'agencia', 'conta', 'pix',
+  // Qualificação do sócio administrador que assina
+  'socioAdminCpf', 'socioAdminRg', 'socioAdminEndereco'
+].forEach((coluna) => {
+  if (!colunasEmpreendimentos.includes(coluna)) {
+    db.exec(`ALTER TABLE empreendimentos ADD COLUMN ${coluna} TEXT`);
+  }
+});
+
 // e-mail, e esta coluna fica vazia; ela existe para os logins que não são
 // endereço — o `admin` criado na primeira subida, por exemplo.
 const colunasUsuarios = db.prepare('PRAGMA table_info(usuarios)').all().map((c) => c.name);

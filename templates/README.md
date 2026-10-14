@@ -136,3 +136,64 @@ jurídico** — não são decisões de código:
 - Os blocos de assinatura trazem só o **nome** do comprador e do cônjuge, sem
   linha de CPF — as testemunhas têm. Se o jurídico quiser CPF ali também,
   é alteração no modelo (há 15 blocos de rubrica no documento).
+
+
+## De onde vêm os dados de cada modelo
+
+Os modelos se dividem em dois grupos, e a diferença não é cosmética.
+
+| Origem | Quando nasce | Quem preenche |
+|---|---|---|
+| `formulario` | no início da venda | o Google Forms, via n8n |
+| `sistema` | no fim da operação | o próprio sistema, do cadastro e do financeiro |
+
+Os dois documentos de encerramento — **Termo de Quitação** e **Cancelamento do
+Termo de Adesão** — não passam pelo formulário. Ninguém vai redigitar nome,
+CPF e endereço meses depois de fechar a venda; o sistema já tem esses dados.
+Eles são emitidos por um botão na tela de Contratos.
+
+Por isso também não aparecem nas caixas de seleção ao abrir uma operação:
+marcá-los no começo criaria um pendente esperando um formulário que nunca vem.
+
+### Placeholders do encerramento
+
+| Placeholder | Origem |
+|---|---|
+| `[QUITACAO_TOTAL]` / `[QUITACAO_TOTAL_EXTENSO]` | soma dos lançamentos recebidos |
+| `[QUITACAO_SALDO]` | sempre zero: o termo só sai com tudo quitado |
+| `[QUITACAO_DATA]` | data do último recebimento confirmado |
+| `[DISTRATO_VALOR]` / `[DISTRATO_VALOR_EXTENSO]` | o que já havia sido recebido, a devolver |
+| `[UNIDADE_ANDAR]` | `pavimento` da unidade, por extenso ("10º" → "décimo andar") |
+
+O valor por extenso é gerado por `services/extenso.js` — não vem do
+formulário, porque não há formulário nesse momento.
+
+### Quadro de pagamentos do Termo de Quitação
+
+A tabela é montada a partir do **financeiro** daquele cliente e unidade:
+
+| Coluna do documento | Campo em `financeiro` |
+|---|---|
+| Parcela | `categoria`, numerada por ordem |
+| Vencimento | `data` |
+| Valor (R$) | `valor` |
+| Recebimento | `dataRecebimento` |
+| Situação | `status` |
+
+Isso tem uma consequência que precisa ficar dita: **confirmar um recebimento no
+sistema deixou de ser controle interno e passou a ter efeito num documento
+assinado.** Erro de lançamento vira erro em termo de quitação.
+
+### Campos do empreendimento usados nos termos
+
+Estes dados viviam escritos dentro dos modelos e agora vêm do cadastro. É o
+que permite um segundo empreendimento sem herdar a conta bancária do primeiro.
+
+| Placeholder | Campo |
+|---|---|
+| `[EMPREENDIMENTO_NOME_FANTASIA]` | `nomeFantasia` (cai para `nome` se vazio) |
+| `[EMPREENDIMENTO_TELEFONE]` | `telefone` |
+| `[EMPREENDIMENTO_SITE]` | `site` |
+| `[EMPREENDIMENTO_BANCO]` / `[EMPREENDIMENTO_AGENCIA]` | `banco` / `agencia` |
+| `[EMPREENDIMENTO_CONTA]` / `[EMPREENDIMENTO_PIX]` | `conta` / `pix` |
+| `[SOCIO_ADMIN_CPF]` / `[SOCIO_ADMIN_RG]` / `[SOCIO_ADMIN_ENDERECO]` | qualificação de quem assina |

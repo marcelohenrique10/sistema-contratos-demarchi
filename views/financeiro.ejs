@@ -5,8 +5,11 @@
   const cores = {
     previsto: ['#fffbeb', '#92400e', '#fde68a'],
     atrasado: ['#fef2f2', '#b91c1c', '#fecaca'],
-    recebido: ['#f0fdf4', '#166534', '#bbf7d0']
+    recebido: ['#f0fdf4', '#166534', '#bbf7d0'],
+    cancelado: ['#f8fafc', '#64748b', '#e2e8f0']
   };
+  // Situação desconhecida não pode derrubar a página inteira.
+  const cor = (s) => cores[s] || ['#ffffff', '#374151', '#e5e7eb'];
 %>
 
 <div class="container">
@@ -58,6 +61,10 @@
             <option value="atrasado" <%= situacaoSelecionada === 'atrasado' ? 'selected' : '' %>>Atrasadas (<%= contagem.atrasado %>)</option>
             <option value="previsto" <%= situacaoSelecionada === 'previsto' ? 'selected' : '' %>>A vencer (<%= contagem.previsto %>)</option>
             <option value="recebido" <%= situacaoSelecionada === 'recebido' ? 'selected' : '' %>>Confirmadas (<%= contagem.recebido %>)</option>
+            <% if (contagem.cancelado) { %>
+              <%# Só aparece quando existe: operação distratada deixa parcelas aqui %>
+              <option value="cancelado" <%= situacaoSelecionada === 'cancelado' ? 'selected' : '' %>>Canceladas (<%= contagem.cancelado %>)</option>
+            <% } %>
           </select>
         </div>
       </div>
@@ -161,7 +168,7 @@
       </thead>
       <tbody>
         <% financeiro.forEach(item => { %>
-          <% const [bg, fg, bd] = cores[item.situacao]; %>
+          <% const [bg, fg, bd] = cor(item.situacao); %>
           <tr style="background-color: <%= bg %>;">
             <td><%= item.data || '—' %></td>
             <td><%= item.empreendimentoNome %></td>

@@ -72,6 +72,54 @@
         <label for="email">E-mail</label>
         <input type="email" id="email" name="email" value="<%= empreendimento.email || '' %>" />
       </div>
+
+      <h3 style="margin-top:26px;">Dados usados nos termos</h3>
+      <p style="color:#6b7280;font-size:14px;margin-top:-8px;">
+        Antes estes dados ficavam escritos dentro dos modelos. Preenchidos aqui, cada
+        empreendimento sai com os seus — e corrigir é editar um campo, não um arquivo.
+      </p>
+      <div class="form-grid">
+      <div class="form-group">
+        <label for="nomeFantasia">Nome fantasia</label>
+        <input type="text" id="nomeFantasia" name="nomeFantasia" value="<%= empreendimento.nomeFantasia || '' %>" placeholder="HIGH TOWER JARDINS" />
+      </div>
+      <div class="form-group">
+        <label for="telefone">Telefone</label>
+        <input type="text" id="telefone" name="telefone" value="<%= empreendimento.telefone || '' %>" placeholder="(27) 0000-0000" />
+      </div>
+      <div class="form-group">
+        <label for="site">Site</label>
+        <input type="text" id="site" name="site" value="<%= empreendimento.site || '' %>" placeholder="www.exemplo.com.br" />
+      </div>
+      <div class="form-group">
+        <label for="banco">Banco</label>
+        <input type="text" id="banco" name="banco" value="<%= empreendimento.banco || '' %>" placeholder="CAIXA" />
+      </div>
+      <div class="form-group">
+        <label for="agencia">Agência</label>
+        <input type="text" id="agencia" name="agencia" value="<%= empreendimento.agencia || '' %>" />
+      </div>
+      <div class="form-group">
+        <label for="conta">Conta corrente</label>
+        <input type="text" id="conta" name="conta" value="<%= empreendimento.conta || '' %>" />
+      </div>
+      <div class="form-group">
+        <label for="pix">Chave PIX</label>
+        <input type="text" id="pix" name="pix" value="<%= empreendimento.pix || '' %>" />
+      </div>
+      <div class="form-group">
+        <label for="socioAdminCpf">CPF do sócio administrador</label>
+        <input type="text" id="socioAdminCpf" name="socioAdminCpf" value="<%= empreendimento.socioAdminCpf || '' %>" />
+      </div>
+      <div class="form-group">
+        <label for="socioAdminRg">RG do sócio administrador</label>
+        <input type="text" id="socioAdminRg" name="socioAdminRg" value="<%= empreendimento.socioAdminRg || '' %>" />
+      </div>
+      <div class="form-group full">
+        <label for="socioAdminEndereco">Endereço do sócio administrador</label>
+        <input type="text" id="socioAdminEndereco" name="socioAdminEndereco" value="<%= empreendimento.socioAdminEndereco || '' %>" />
+      </div>
+      </div>
     </div>
 
     <h3 style="margin:28px 0 4px;border-top:1px solid #e5e7eb;padding-top:20px;">Links</h3>

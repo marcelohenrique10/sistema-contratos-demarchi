@@ -87,6 +87,32 @@ function normalizarTipoDocumento(tipo) {
   return String(tipo || '').replace(/^\s*\d+\s*[.)-]\s*/, '').trim();
 }
 
+/**
+ * Guarda no cliente a qualificação que veio no documento.
+ *
+ * Só preenche o que está vazio: o cadastro manual, feito por alguém da
+ * equipe, vale mais do que uma resposta de formulário reprocessada.
+ */
+function guardarQualificacao(clienteId, documento) {
+  const c = documento.comprador || {};
+  const j = documento.conjuge || {};
+
+  const campos = {
+    nacionalidade: c.nacionalidade, estadoCivil: c.estadoCivil, profissao: c.profissao,
+    rg: c.rg, orgaoEmissorRg: c.orgaoEmissorRg, endereco: c.endereco, cep: c.cep,
+    conjugeNome: j.nome, conjugeCpf: j.cpf, conjugeRg: j.rg,
+    conjugeOrgaoEmissorRg: j.orgaoEmissorRg, conjugeNacionalidade: j.nacionalidade,
+    conjugeProfissao: j.profissao, conjugeEstadoCivil: j.estadoCivil, conjugeEmail: j.email
+  };
+
+  const comValor = Object.entries(campos).filter(([, v]) => String(v || '').trim());
+  if (!comValor.length) return;
+
+  const sets = comValor.map(([k]) => `${k} = COALESCE(NULLIF(${k}, ''), ?)`).join(', ');
+  db.prepare(`UPDATE clientes SET ${sets} WHERE id = ?`)
+    .run([...comValor.map(([, v]) => String(v).trim()), clienteId]);
+}
+
 // Aviso que não foi para o responsável precisa deixar rastro: o cadastro é
 // que está errado, e ninguém descobriria isso só pelo e-mail chegando.
 function notaDoAviso(aviso) {
@@ -338,6 +364,11 @@ router.post('/documento', checkAuth, async (req, res) => {
     if (contratoId) {
       db.prepare('UPDATE contratos SET status = ? WHERE id = ?').run(['gerado', contratoId]);
     }
+
+    // A qualificação que acabou de entrar no documento fica guardada no
+    // cliente. É dela que a quitação e o distrato vivem, meses depois,
+    // quando não há mais formulário a preencher.
+    if (clienteId) guardarQualificacao(parseInt(clienteId), documento);
 
     // As parcelas do contrato viram cronograma de recebíveis no financeiro.
     const recebiveis = registrarRecebiveis({

@@ -13,8 +13,25 @@ const MODELOS = {
   'Anexo ao Contrato de Promessa de Compra e Venda': 'anexo-promessa-compra-venda.docx',
   'Termo de Anuência com Outorga de Poderes': 'termo-anuencia-outorga-poderes.docx',
   'Termo de Ciência e Anuência para Empréstimo': 'termo-ciencia-anuencia-emprestimo.docx',
-  'Termo de Adesão Preliminar SCP': 'termo-adesao-preliminar-scp.docx'
+  'Termo de Adesão Preliminar SCP': 'termo-adesao-preliminar-scp.docx',
+  'Termo de Quitação de Obrigações': 'termo-quitacao.docx',
+  'Cancelamento do Termo de Adesão Preliminar': 'distrato-adesao-scp.docx'
 };
+
+/**
+ * De onde vêm os dados de cada documento.
+ *
+ *   formulario — nasce no INÍCIO da venda. Alguém preenche o Google Forms, o
+ *                n8n traz a resposta e o sistema monta o arquivo.
+ *   sistema    — nasce no FIM da operação (quitação, distrato). Ninguém vai
+ *                redigitar nome, CPF e endereço meses depois: o sistema já
+ *                tem esses dados, e gera a partir deles.
+ *
+ * A diferença não é cosmética. Documento de origem `sistema` não pode ser
+ * oferecido ao abrir a operação — viraria um pendente esperando um formulário
+ * que nunca chega.
+ */
+const ORIGEM = { FORMULARIO: 'formulario', SISTEMA: 'sistema' };
 
 /**
  * Os mesmos modelos, com o que a tela de contratos precisa mostrar.
@@ -28,27 +45,44 @@ const CATALOGO = [
   {
     tipo: 'Contrato de Promessa de Compra e Venda',
     categoria: 'Compra e Venda',
+    origem: ORIGEM.FORMULARIO,
     resumo: 'O contrato principal da venda: preço, parcelas e unidade.'
   },
   {
     tipo: 'Anexo ao Contrato de Promessa de Compra e Venda',
     categoria: 'Anexo',
+    origem: ORIGEM.FORMULARIO,
     resumo: 'Complementa o contrato principal com o detalhamento da unidade.'
   },
   {
     tipo: 'Termo de Anuência com Outorga de Poderes',
     categoria: 'Termo',
+    origem: ORIGEM.FORMULARIO,
     resumo: 'Autoriza a incorporadora a representar o comprador nos atos da obra.'
   },
   {
     tipo: 'Termo de Ciência e Anuência para Empréstimo',
     categoria: 'Termo',
+    origem: ORIGEM.FORMULARIO,
     resumo: 'Para quando há instituição credora financiando a operação.'
   },
   {
     tipo: 'Termo de Adesão Preliminar SCP',
     categoria: 'Termo',
+    origem: ORIGEM.FORMULARIO,
     resumo: 'Adesão à Sociedade em Conta de Participação do empreendimento.'
+  },
+  {
+    tipo: 'Termo de Quitação de Obrigações',
+    categoria: 'Encerramento',
+    origem: ORIGEM.SISTEMA,
+    resumo: 'Declara o pagamento integral. O quadro de parcelas vem do Financeiro.'
+  },
+  {
+    tipo: 'Cancelamento do Termo de Adesão Preliminar',
+    categoria: 'Encerramento',
+    origem: ORIGEM.SISTEMA,
+    resumo: 'Distrato da adesão à SCP, com devolução do aporte ao investidor.'
   }
 ];
 
@@ -174,6 +208,61 @@ function valoresDaTabelaScp(compraVenda) {
   return valores;
 }
 
+/**
+ * A tabela "CONDIÇÕES E PRAZOS" do Termo de Quitação, montada a partir dos
+ * lançamentos do financeiro daquele contrato.
+ *
+ * É o primeiro documento que LÊ o financeiro em vez de alimentá-lo: a partir
+ * daqui, confirmar um recebimento no sistema deixa de ser controle interno e
+ * passa a ter efeito num documento assinado.
+ *
+ * A tabela de pagamentos é a SEGUNDA do modelo — a primeira é o cabeçalho.
+ */
+const TABELA_PAGAMENTOS_QUITACAO = 1;
+
+function montarTabelaQuitacao(xml, lancamentos) {
+  const tabelas = xml.match(/<w:tbl>[\s\S]*?<\/w:tbl>/g) || [];
+  const tabela = tabelas[TABELA_PAGAMENTOS_QUITACAO];
+  if (!tabela) return xml;
+
+  const linhas = docx.extrairLinhas(tabela);
+  if (linhas.length < 3) return xml;
+
+  const moldeCabecalho = linhas[0];
+  const moldeLinha = linhas[1];
+  const moldeTotal = linhas[linhas.length - 1];
+
+  // "1ª Entrada", "2ª Parcela Mensal" — a ordem é por categoria, como o
+  // documento original escrevia à mão.
+  const contagem = {};
+  const novas = [moldeCabecalho];
+
+  lancamentos.forEach((l) => {
+    const categoria = l.categoria || 'Parcela';
+    contagem[categoria] = (contagem[categoria] || 0) + 1;
+    const quitado = l.status === 'recebido';
+
+    novas.push(docx.definirTextosLinha(moldeLinha, [
+      `${contagem[categoria]}ª ${categoria}`,
+      formatarData(parsearData(l.data)) || l.data || '',
+      comReal(formatarMoeda(l.valor)),
+      quitado ? (formatarData(parsearData(l.dataRecebimento)) || l.dataRecebimento || '') : '',
+      quitado ? 'QUITADO' : 'EM ABERTO'
+    ]));
+  });
+
+  // A linha de total já virou placeholder na conversão do modelo.
+  novas.push(moldeTotal);
+
+  return docx.substituirLinhasDaTabela(xml, TABELA_PAGAMENTOS_QUITACAO, novas);
+}
+
+function formatarMoeda(numero) {
+  const n = Number(numero);
+  if (!Number.isFinite(n)) return '';
+  return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 // "Parcelado" / "À vista" -> como a frase do contrato pede: "de forma ..."
 function textoFormaAquisicao(forma) {
   const texto = String(forma ?? '').trim().toLowerCase();
@@ -221,6 +310,9 @@ function montarValores(documento, empreendimento, extras = {}) {
   const anexo = documento.anexo || {};
   const scp = documento.scp || {};
   const emp = empreendimento || {};
+  // Termo de Quitação e Distrato nascem no fim da operação, com dados que o
+  // sistema já tem — não vêm do formulário.
+  const encerramento = documento.encerramento || {};
 
   const data = parsearData(geral.dataDocumento) || parsearData(geral.dataHora);
 
@@ -242,6 +334,10 @@ function montarValores(documento, empreendimento, extras = {}) {
     CONJUGE_PROFISSAO: conjuge.profissao,
     CONJUGE_RG: conjuge.rg,
     CONJUGE_ORGAO_EMISSOR: conjuge.orgaoEmissorRg,
+    // No Distrato o cônjuge assina como parte, não como anuente — por isso
+    // precisa de estado civil e e-mail próprios.
+    CONJUGE_ESTADO_CIVIL: conjuge.estadoCivil,
+    CONJUGE_EMAIL: conjuge.email,
 
     EMPREENDIMENTO_NOME: emp.nome,
     EMPREENDIMENTO_RAZAO_SOCIAL: emp.razaoSocial || scp.razaoSocial,
@@ -250,6 +346,20 @@ function montarValores(documento, empreendimento, extras = {}) {
     EMPREENDIMENTO_CEP: emp.cep,
     EMPREENDIMENTO_SOCIO_ADMIN: emp.socioAdmin,
     EMPREENDIMENTO_EMAIL: emp.email,
+    EMPREENDIMENTO_NOME_FANTASIA: emp.nomeFantasia || emp.nome,
+    EMPREENDIMENTO_TELEFONE: emp.telefone,
+    EMPREENDIMENTO_SITE: emp.site,
+
+    // Conta vinculada ao empreendimento, citada no Distrato
+    EMPREENDIMENTO_BANCO: emp.banco,
+    EMPREENDIMENTO_AGENCIA: emp.agencia,
+    EMPREENDIMENTO_CONTA: emp.conta,
+    EMPREENDIMENTO_PIX: emp.pix,
+
+    // Qualificação de quem assina pela SPE
+    SOCIO_ADMIN_CPF: emp.socioAdminCpf,
+    SOCIO_ADMIN_RG: emp.socioAdminRg,
+    SOCIO_ADMIN_ENDERECO: emp.socioAdminEndereco,
 
     UNIDADE_NUMERO_EXTENSO: unidade.numeroExtenso || anexo.numeroUnidadeExtenso,
     UNIDADE_VAGAS: unidade.vagasGaragem,
@@ -276,6 +386,16 @@ function montarValores(documento, empreendimento, extras = {}) {
     UNIDADE_NUMERO: unidade.numero || anexo.numeroUnidade || scp.numeroUnidades || extras.unidadeNumero,
     UNIDADE_TIPO: unidade.tipo || anexo.tipoUnidade || extras.unidadeTipo,
 
+    // Encerramento da operação: quitação ou distrato
+    UNIDADE_ANDAR: encerramento.unidadeAndar,
+    QUITACAO_TOTAL: encerramento.total,
+    QUITACAO_TOTAL_EXTENSO: encerramento.totalExtenso,
+    QUITACAO_SALDO: encerramento.saldo,
+    QUITACAO_DATA: encerramento.dataQuitacao,
+    DISTRATO_VALOR: encerramento.valorDevolvido,
+    DISTRATO_VALOR_EXTENSO: encerramento.valorDevolvidoExtenso,
+
+    DOC_CIDADE_UF: geral.cidadeUf,
     DOC_DATA: formatarData(data),
     DOC_DIA: data ? String(data.getDate()).padStart(2, '0') : '',
     DOC_MES: data ? MESES[data.getMonth()] : '',
@@ -485,7 +605,11 @@ async function gerarDocumento({ documento, empreendimento, empreendimentoId, uni
   const valores = montarValores(documento, empreendimento, { unidadeNumero, unidadeTipo });
 
   let novoXml = xml;
-  if (documento.compraVenda) {
+  // A quitação tem tabela própria, vinda do financeiro. Sempre reconstruída:
+  // deixar as linhas do modelo passaria o exemplo real para o cliente.
+  if (tipo === 'Termo de Quitação de Obrigações') {
+    novoXml = montarTabelaQuitacao(novoXml, (documento.encerramento || {}).lancamentos || []);
+  } else if (documento.compraVenda) {
     novoXml = montarTabelaParcelas(novoXml, documento.compraVenda);
   }
   novoXml = docx.substituirPlaceholders(novoXml, valores);

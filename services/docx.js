@@ -70,10 +70,19 @@ function definirTextosLinha(linhaXml, textos) {
 // Substitui o miolo da primeira tabela do documento pelas linhas informadas,
 // mantendo as propriedades da tabela (<w:tblPr>, <w:tblGrid>).
 function substituirLinhasDaPrimeiraTabela(xml, novasLinhas) {
-  const tabela = xml.match(/<w:tbl>[\s\S]*?<\/w:tbl>/);
-  if (!tabela) return xml;
+  return substituirLinhasDaTabela(xml, 0, novasLinhas);
+}
 
-  const original = tabela[0];
+/**
+ * O mesmo, para a tabela de índice `indice`.
+ *
+ * O Termo de Quitação usa tabela também no cabeçalho e no bloco de
+ * assinaturas, então "a primeira" não serve — a de pagamentos é a segunda.
+ */
+function substituirLinhasDaTabela(xml, indice, novasLinhas) {
+  const tabelas = xml.match(/<w:tbl>[\s\S]*?<\/w:tbl>/g) || [];
+  const original = tabelas[indice];
+  if (!original) return xml;
   const primeiraLinha = original.search(/<w:tr(?: [^>]*)?>/);
   const cabecalho = original.slice(0, primeiraLinha);
 
@@ -91,5 +100,6 @@ module.exports = {
   definirTextoCelula,
   definirTextosLinha,
   substituirLinhasDaPrimeiraTabela,
+  substituirLinhasDaTabela,
   escaparXml
 };

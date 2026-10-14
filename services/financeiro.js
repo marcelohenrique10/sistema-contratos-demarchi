@@ -9,6 +9,10 @@ function hoje() {
  * prevista cujo vencimento já passou. Calculando, nunca desatualiza.
  */
 function situacao(lancamento) {
+  // Parcela de operação distratada não é nem recebida nem a vencer: ela
+  // deixou de existir. Sem este estado, o distrato devolveria o dinheiro e o
+  // financeiro continuaria cobrando para sempre.
+  if (lancamento.status === 'cancelado') return 'cancelado';
   if (lancamento.status !== 'previsto') return 'recebido';
   if (!lancamento.data) return 'previsto';
   return lancamento.data < hoje() ? 'atrasado' : 'previsto';
@@ -18,7 +22,8 @@ const ROTULOS = {
   entrada: {
     previsto: 'A vencer',
     atrasado: 'Atrasado',
-    recebido: 'Recebido'
+    recebido: 'Recebido',
+    cancelado: 'Cancelado'
   }
 };
 
@@ -144,6 +149,7 @@ function excluir(id) {
 function totais(lancamentos) {
   const soma = (filtro) => lancamentos.filter(filtro).reduce((acc, l) => acc + l.valor, 0);
 
+  // Cancelados ficam de fora de todos os totais: o dinheiro foi devolvido.
   const recebido = soma((l) => l.tipo === 'entrada' && l.situacao === 'recebido');
 
   return {
@@ -155,7 +161,34 @@ function totais(lancamentos) {
   };
 }
 
+/**
+ * Cancela os lançamentos ainda previstos de uma operação distratada e informa
+ * quanto já havia sido recebido — que é o valor a devolver ao investidor.
+ */
+function cancelarDaOperacao({ clienteId, unidadeId }) {
+  const condicao = unidadeId
+    ? 'clienteId = ? AND unidadeId = ?'
+    : 'clienteId = ? AND unidadeId IS NULL';
+  const parametros = unidadeId ? [parseInt(clienteId), parseInt(unidadeId)] : [parseInt(clienteId)];
+
+  const todos = db.prepare(`SELECT * FROM financeiro WHERE ${condicao}`).all(parametros);
+  const recebido = todos
+    .filter((l) => l.status === 'recebido')
+    .reduce((acc, l) => acc + l.valor, 0);
+
+  const alterados = db.prepare(
+    `UPDATE financeiro SET status = 'cancelado' WHERE ${condicao} AND status = 'previsto'`
+  ).run(parametros);
+
+  return {
+    cancelados: Number(alterados.changes || 0),
+    jaRecebido: recebido,
+    total: todos.length
+  };
+}
+
 module.exports = {
+  cancelarDaOperacao,
   enriquecer,
   situacao,
   rotulo,

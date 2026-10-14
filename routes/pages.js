@@ -12,6 +12,7 @@ const retroativo = require('../services/retroativo');
 const reservas = require('../services/reservas');
 const formato = require('../services/formato');
 const documentoSvc = require('../services/documento');
+const encerramento = require('../services/encerramento');
 const caminhos = require('../caminhos');
 
 /**
@@ -251,11 +252,16 @@ router.post('/empreendimentos/:id', (req, res) => {
   if (!(nome || '').trim()) {
     return res.redirect(`/empreendimentos/${req.params.id}/editar?erro=${encodeURIComponent('Informe o nome do empreendimento.')}`);
   }
-  db.prepare(`
-    UPDATE empreendimentos
-    SET nome = ?, endereco = ?, status = ?, descricao = ?, memorialLink = ?, plantaLink = ?, tabelaVendaLink = ?, razaoSocial = ?, cnpj = ?, socioAdmin = ?, email = ?, cep = ?
-    WHERE id = ?
-  `).run([
+  // Campos que antes viviam escritos dentro dos modelos. Trazer para cá é o
+  // que permite um segundo empreendimento sem herdar a conta bancária do
+  // primeiro.
+  const EXTRAS = ['nomeFantasia', 'telefone', 'site', 'banco', 'agencia', 'conta', 'pix',
+    'socioAdminCpf', 'socioAdminRg', 'socioAdminEndereco'];
+
+  const colunas = ['nome', 'endereco', 'status', 'descricao', 'memorialLink', 'plantaLink',
+    'tabelaVendaLink', 'razaoSocial', 'cnpj', 'socioAdmin', 'email', 'cep', ...EXTRAS];
+
+  const valores = [
     nome,
     endereco || null,
     status || 'ativo',
@@ -268,8 +274,11 @@ router.post('/empreendimentos/:id', (req, res) => {
     socioAdmin || null,
     email || null,
     cep || null,
-    req.params.id
-  ]);
+    ...EXTRAS.map((c) => (String(req.body[c] || '').trim() || null))
+  ];
+
+  db.prepare(`UPDATE empreendimentos SET ${colunas.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`)
+    .run([...valores, req.params.id]);
   res.redirect(`/empreendimentos/${req.params.id}?ok=1`);
 });
 
@@ -658,6 +667,7 @@ router.get('/contratos', (req, res) => {
       operacoesMap[key] = {
         operacaoId: key,
         clienteId: c.clienteId,
+        unidadeId: c.unidadeId,
         clienteNome: c.clienteNome,
         unidadeNumero: c.unidadeNumero,
         empreendimentoNome: c.empreendimentoNome,
@@ -676,13 +686,16 @@ router.get('/contratos', (req, res) => {
   });
   res.render('contratos', {
     operacoes, clientes, empreendimentos, unidades,
-    // Os modelos que de fato existem, e os conjuntos que a equipe pede junto.
-    catalogo: documentoSvc.CATALOGO,
+    // Só o que nasce do formulário entra nas caixas de seleção. Quitação e
+    // distrato são gerados pelo sistema no fim da operação, não escolhidos
+    // no começo dela.
+    catalogo: documentoSvc.CATALOGO.filter((m) => m.origem === 'formulario'),
     conjuntos: documentoSvc.OPERACOES,
     anexado: Boolean(req.query.anexado),
     aproveitados: parseInt(req.query.aproveitados) || 0,
     criados: parseInt(req.query.criados) || 0,
     repetidos: req.query.repetidos || null,
+    aviso: req.query.aviso || null,
     erro: req.query.erro || null,
     formLink: FORM_URL
   });
@@ -777,7 +790,9 @@ router.get('/financeiro', (req, res) => {
     .sort((a, b) => String(b.data || '').localeCompare(String(a.data || '')));
     
   const filtro = req.query.situacao;
-  const visiveis = ['previsto', 'atrasado', 'recebido'].includes(filtro) ? lancamentos.filter((l) => l.situacao === filtro) : lancamentos;
+  const visiveis = ['previsto', 'atrasado', 'recebido', 'cancelado'].includes(filtro)
+    ? lancamentos.filter((l) => l.situacao === filtro)
+    : lancamentos;
   
   // Listas do lançamento manual. A unidade traz o empreendimento junto para
   // que o select possa ser agrupado sem uma segunda consulta.
@@ -797,13 +812,52 @@ router.get('/financeiro', (req, res) => {
     contagem: {
       previsto: lancamentos.filter((l) => l.situacao === 'previsto').length,
       atrasado: lancamentos.filter((l) => l.situacao === 'atrasado').length,
-      recebido: lancamentos.filter((l) => l.situacao === 'recebido').length
+      recebido: lancamentos.filter((l) => l.situacao === 'recebido').length,
+      cancelado: lancamentos.filter((l) => l.situacao === 'cancelado').length
     },
     empreendimentos,
     empreendimentoSelecionado: empreendimentoId,
     situacaoSelecionada: filtro || 'todas',
     erro: req.query.erro || null
   });
+});
+
+// ---------- Encerramento da operação ----------
+//
+// Quitação e distrato não passam pelo formulário: o sistema já tem cliente,
+// unidade e parcelas. São de admin porque um declara recebimento integral e o
+// outro desfaz a venda e devolve dinheiro.
+
+function voltarParaContratos(res, chave, valor) {
+  res.redirect(`/contratos?${chave}=${encodeURIComponent(valor)}`);
+}
+
+router.post('/operacoes/:clienteId/:unidadeId/quitacao', async (req, res) => {
+  try {
+    const r = await encerramento.gerarQuitacao({
+      clienteId: req.params.clienteId,
+      unidadeId: req.params.unidadeId === 'sem-unidade' ? null : req.params.unidadeId
+    });
+    voltarParaContratos(res, 'aviso',
+      `Termo de quitação gerado com ${r.parcelas} parcela(s) no quadro de pagamentos.`);
+  } catch (e) {
+    voltarParaContratos(res, 'erro', e.message);
+  }
+});
+
+router.post('/operacoes/:clienteId/:unidadeId/distrato', async (req, res) => {
+  try {
+    const r = await encerramento.gerarDistrato({
+      clienteId: req.params.clienteId,
+      unidadeId: req.params.unidadeId === 'sem-unidade' ? null : req.params.unidadeId
+    });
+    const partes = ['Distrato gerado.'];
+    if (r.unidadeLiberada) partes.push(`Unidade ${r.unidadeLiberada} voltou para livre.`);
+    if (r.parcelasCanceladas) partes.push(`${r.parcelasCanceladas} parcela(s) cancelada(s) no financeiro.`);
+    voltarParaContratos(res, 'aviso', partes.join(' '));
+  } catch (e) {
+    voltarParaContratos(res, 'erro', e.message);
+  }
 });
 
 // ---------- Ações do financeiro ----------

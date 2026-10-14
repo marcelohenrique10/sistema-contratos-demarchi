@@ -25,6 +25,12 @@
     </div>
   <% } %>
 
+  <% if (aviso) { %>
+    <div style="background: #dcfce7; color: #15803d; padding: 12px; border-radius: 8px; margin-bottom: 20px;">
+      <%= aviso %>
+    </div>
+  <% } %>
+
   <% if (erro) { %>
     <div style="background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; padding: 12px; border-radius: 8px; margin-bottom: 20px;">
       <%= erro %>
@@ -152,6 +158,24 @@
               <%= op.statusGeral %>
             </span>
             <span style="font-size: 13px; color: #475569; font-weight: bold;"><%= op.concluidos %> de <%= op.total %> prontos</span>
+
+            <%# Quitação e distrato encerram a operação: o sistema monta os dois
+                a partir do cadastro e do financeiro, sem passar pelo formulário. %>
+            <% if (ehAdmin) { %>
+              <% const alvo = `/operacoes/${op.clienteId}/${op.unidadeId || 'sem-unidade'}`; %>
+              <form method="POST" action="<%= alvo %>/quitacao" class="inline-form"
+                    onsubmit="return confirm('Emitir o termo de quitação de <%= op.clienteNome %>?
+
+Ele declara ter recebido o valor integral. O quadro de pagamentos vem do Financeiro.')">
+                <button type="submit" class="button secondary" style="font-size: 12px; padding: 5px 10px;">Termo de quitação</button>
+              </form>
+              <form method="POST" action="<%= alvo %>/distrato" class="inline-form"
+                    onsubmit="return confirm('Emitir o distrato de <%= op.clienteNome %>?
+
+Isto libera a unidade, desassocia o cliente e cancela as parcelas ainda previstas no Financeiro.')">
+                <button type="submit" class="button danger" style="font-size: 12px; padding: 5px 10px;">Distrato</button>
+              </form>
+            <% } %>
           </div>
         </div>
 
