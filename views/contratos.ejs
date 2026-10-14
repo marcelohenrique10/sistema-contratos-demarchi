@@ -171,6 +171,25 @@
             </span>
             <span style="font-size: 13px; color: #475569; font-weight: bold;"><%= op.concluidos %> de <%= op.total %> prontos</span>
 
+            <%# Atalho para os dois de encerramento, sem reselecionar cliente e
+                unidade na ficha de cima. Vai para a MESMA rota da lista: dois
+                caminhos na tela, um só no código. %>
+            <% if (ehAdmin) { %>
+              <% [['Termo de Quitação de Obrigações', 'Termo de quitação', 'secondary',
+                    'Emitir o termo de quitação de ' + op.clienteNome + '? Ele declara ter recebido o valor integral. O quadro de pagamentos vem do Financeiro.'],
+                  ['Cancelamento do Termo de Adesão Preliminar', 'Distrato', 'danger',
+                    'Emitir o distrato de ' + op.clienteNome + '? Isto libera a unidade, desassocia o cliente e cancela as parcelas ainda previstas no Financeiro.']
+                 ].forEach(function (acao) { %>
+                <form method="POST" action="/contratos/iniciar" class="inline-form"
+                      onsubmit="return confirm('<%= acao[3].replace(/'/g, "\'") %>')">
+                  <input type="hidden" name="clienteId" value="<%= op.clienteId %>" />
+                  <input type="hidden" name="unidadeId" value="<%= op.unidadeId || '' %>" />
+                  <input type="hidden" name="tipos" value="<%= acao[0] %>" />
+                  <button type="submit" class="button <%= acao[2] %>"
+                          style="font-size: 12px; padding: 5px 10px;"><%= acao[1] %></button>
+                </form>
+              <% }) %>
+            <% } %>
           </div>
         </div>
 
