@@ -309,6 +309,7 @@ function montarValores(documento, empreendimento, extras = {}) {
   const unidade = compraVenda.unidade || {};
   const anexo = documento.anexo || {};
   const scp = documento.scp || {};
+  const emprestimo = documento.emprestimo || {};
   const emp = empreendimento || {};
   // Termo de Quitação e Distrato nascem no fim da operação, com dados que o
   // sistema já tem — não vêm do formulário.
@@ -401,7 +402,11 @@ function montarValores(documento, empreendimento, extras = {}) {
     DOC_MES: data ? MESES[data.getMonth()] : '',
     DOC_ANO: data ? String(data.getFullYear()) : '',
 
-    DATA_COMPROMISSO_COMPRA_VENDA: formatarData(parsearData(geral.dataDocumento)),
+    // A data do compromisso é a da promessa de compra e venda, anterior ao
+    // termo. Antes saía sempre igual à data do documento, ignorando a que o
+    // formulário perguntava.
+    DATA_COMPROMISSO_COMPRA_VENDA: formatarData(parsearData(emprestimo.dataCompromisso))
+      || formatarData(parsearData(geral.dataDocumento)),
     SCP_VALOR_ENTRADA: scp.valorEntrada,
 
     // Tabela "CONDIÇÕES E PRAZOS" do SCP, montada a partir das parcelas.

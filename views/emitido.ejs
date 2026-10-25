@@ -1,0 +1,75 @@
+<%- include("partials/header") %>
+
+<%
+  const gerados = resultado.gerados || [];
+  const falhas = resultado.falhas || [];
+  const avisos = resultado.avisos || [];
+  const link = (arquivo) => '/storage/' + String(arquivo || '').replace(/^\/storage\//, '');
+%>
+
+<style>
+  .emitido .doc { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+    padding: 14px 0; border-bottom: 1px solid var(--linha); flex-wrap: wrap; }
+  .emitido .doc:last-child { border-bottom: 0; }
+  .emitido .doc small { display: block; color: var(--texto-suave); margin-top: 3px; }
+  .emitido .branco { color: var(--atencao); }
+  .emitido .alerta { border-radius: var(--raio-sm); padding: 12px 14px; margin-bottom: 16px; font-size: 14px; }
+  .emitido .alerta.ok { background: var(--ok-fundo); border: 1px solid var(--ok-linha); color: var(--ok); }
+  .emitido .alerta.erro { background: var(--perigo-fundo); border: 1px solid var(--perigo-linha); color: var(--perigo); }
+  .emitido .alerta.atencao { background: var(--atencao-fundo); border: 1px solid var(--atencao-linha); color: var(--atencao); }
+  .emitido .alerta ul { margin: 6px 0 0; padding-left: 18px; }
+</style>
+
+<div class="emitido">
+  <section class="page-header">
+    <h2>Documentos gerados</h2>
+    <p><strong><%= cliente.nome %></strong><% if (unidade) { %> · Unidade <%= unidade.numero %><% } %></p>
+  </section>
+
+  <% if (gerados.length) { %>
+    <div class="alerta ok"><%= gerados.length %> <%= gerados.length === 1 ? 'documento pronto' : 'documentos prontos' %> para baixar.
+      Eles também aparecem em Contratos e em Documentos.</div>
+  <% } %>
+
+  <% if (falhas.length) { %>
+    <div class="alerta erro" role="alert">
+      <strong>Não foi possível gerar:</strong>
+      <ul><% falhas.forEach((f) => { %><li><%= f.tipo %> — <%= f.erro %></li><% }) %></ul>
+    </div>
+  <% } %>
+
+  <% if (avisos.length) { %>
+    <div class="alerta atencao">
+      <strong>Pontos a conferir</strong>
+      <ul><% avisos.forEach((a) => { %><li><%= a %></li><% }) %></ul>
+    </div>
+  <% } %>
+
+  <section class="form-card">
+    <% gerados.forEach((g) => { %>
+      <div class="doc">
+        <div>
+          <strong><%= g.tipo %></strong>
+          <% if (g.camposSemValor && g.camposSemValor.length) { %>
+            <small class="branco">
+              <%= g.camposSemValor.length %> campo(s) em branco no documento: <%= g.camposSemValor.join(', ') %>
+            </small>
+          <% } else { %>
+            <small>Todos os campos preenchidos.</small>
+          <% } %>
+          <% if (g.recebiveis && g.recebiveis.lancamentos) { %>
+            <small><%= g.recebiveis.lancamentos %> parcela(s) lançada(s) no Financeiro.</small>
+          <% } %>
+        </div>
+        <a class="button" href="<%= link(g.arquivo) %>" target="_blank">Baixar</a>
+      </div>
+    <% }) %>
+  </section>
+
+  <div class="actions">
+    <a class="button" href="/contratos">Ir para Contratos</a>
+    <a class="button secondary" href="<%= voltar %>">Corrigir e gerar de novo</a>
+  </div>
+</div>
+
+<%- include("partials/footer") %>

@@ -56,7 +56,7 @@ function guardarQualificacao(clienteId, documento) {
     .run([...comValor.map(([, v]) => String(v).trim()), clienteId]);
 }
 
-async function emitir({ documento, empreendimentoId, unidadeId, unidadeNumero, clienteId, contratoId, respostaId }) {
+async function emitir({ documento, empreendimentoId, unidadeId, unidadeNumero, clienteId, contratoId, respostaId, comRecebiveis = true }) {
   const empreendimento = empreendimentoId
     ? db.prepare('SELECT * FROM empreendimentos WHERE id = ?').get(empreendimentoId)
     : null;
@@ -92,11 +92,9 @@ async function emitir({ documento, empreendimentoId, unidadeId, unidadeNumero, c
   if (clienteId) guardarQualificacao(parseInt(clienteId), documento);
 
   // As parcelas do contrato viram cronograma de recebíveis no financeiro.
-  const recebiveis = registrarRecebiveis({
-    contratoId,
-    empreendimentoId,
-    compraVenda: documento.compraVenda
-  });
+  const recebiveis = comRecebiveis
+    ? registrarRecebiveis({ contratoId, empreendimentoId, compraVenda: documento.compraVenda })
+    : { lancamentos: 0, total: 0 };
 
   return {
     id: Number(insercao.lastInsertRowid),

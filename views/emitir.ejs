@@ -1,0 +1,303 @@
+<%- include("partials/header") %>
+
+<%
+  // Escapa o que vai dentro de atributos e textos montados aqui.
+  const esc = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const val = (k) => (valores[k] == null ? '' : valores[k]);
+
+  // Um campo do formulário, com o erro dele logo abaixo.
+  function campo(nome, rotulo, o = {}) {
+    const tipo = o.tipo || 'text';
+    const erro = erros[nome];
+    const atributos = [
+      `id="${nome}"`, `name="${nome}"`,
+      o.ph ? `placeholder="${esc(o.ph)}"` : '',
+      o.lista ? `list="${o.lista}"` : '',
+      o.extenso ? 'data-extenso' : '',
+      o.modo ? `inputmode="${o.modo}"` : '',
+      erro ? 'aria-invalid="true"' : ''
+    ].filter(Boolean).join(' ');
+
+    let controle;
+    if (o.opcoes) {
+      controle = `<select ${atributos}><option value=""></option>` + o.opcoes.map((op) =>
+        `<option value="${esc(op)}" ${String(val(nome)) === op ? 'selected' : ''}>${esc(op)}</option>`).join('') + '</select>';
+    } else {
+      controle = `<input type="${tipo}" ${atributos} value="${esc(val(nome))}" />`;
+    }
+
+    return `<div class="form-group${o.cheio ? ' full' : ''}" ${o.attrs || ''}>
+      <label for="${nome}">${esc(rotulo)}${o.obrig ? ' <span class="obrig">*</span>' : ''}</label>
+      ${controle}
+      ${o.extenso ? '<small class="extenso" aria-live="polite"></small>' : ''}
+      ${o.ajuda ? `<small>${esc(o.ajuda)}</small>` : ''}
+      ${erro ? `<small class="erro-campo">${esc(erro)}</small>` : ''}
+    </div>`;
+  }
+
+  const pendentes = ctx.contratos.filter((c) => c.status !== 'gerado' && c.status !== 'anexado');
+  const parcelas = (valores.parcelas && valores.parcelas.length) ? valores.parcelas : [{}];
+  const errosDeParcela = Object.keys(erros).filter((k) => k.startsWith('parcela_')).map((k) => erros[k]);
+%>
+
+<style>
+  .emitir .secao { margin-bottom: 18px; }
+  /* .form-group é display:flex e venceria o [hidden] do navegador */
+  .emitir [hidden] { display: none !important; }
+  .emitir .obrig { color: var(--perigo); }
+  .emitir .erro-campo { color: var(--perigo); font-weight: 600; }
+  .emitir [aria-invalid="true"] { border-color: var(--perigo) !important; }
+  .emitir .extenso { color: var(--marca-clara); font-style: italic; }
+  .emitir .nota { background: var(--info-fundo); border: 1px solid var(--info-linha); color: var(--texto);
+    border-radius: var(--raio-sm); padding: 10px 12px; font-size: 13px; margin: 0 0 14px; }
+  .emitir .alerta { border-radius: var(--raio-sm); padding: 12px 14px; margin-bottom: 16px; font-size: 14px; }
+  .emitir .alerta.erro { background: var(--perigo-fundo); border: 1px solid var(--perigo-linha); color: var(--perigo); }
+  .emitir .alerta.atencao { background: var(--atencao-fundo); border: 1px solid var(--atencao-linha); color: var(--atencao); }
+  .emitir .alerta ul { margin: 6px 0 0; padding-left: 18px; }
+  .emitir .docs { display: grid; gap: 8px; }
+  .emitir .doc { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--linha);
+    border-radius: var(--raio-sm); cursor: pointer; font-weight: 400; }
+  .emitir .doc input { width: auto; margin-top: 3px; }
+  .emitir .doc small { display: block; color: var(--texto-suave); }
+  .emitir .pessoa { display: flex; gap: 18px; margin-bottom: 12px; }
+  .emitir .pessoa label { display: flex; gap: 6px; align-items: center; font-weight: 500; }
+  .emitir .pessoa input { width: auto; }
+  .emitir .tabela-parcelas { overflow-x: auto; }
+  .emitir .tabela-parcelas table { min-width: 860px; margin: 0; box-shadow: none; }
+  .emitir .tabela-parcelas td { padding: 6px; vertical-align: top; }
+  .emitir .tabela-parcelas input, .emitir .tabela-parcelas select { width: 100%; padding: 7px 8px; font-size: 13px; }
+  .emitir .soma { font-size: 13px; margin-top: 10px; font-variant-numeric: tabular-nums; }
+  .emitir .soma.diverge { color: var(--atencao); font-weight: 600; }
+  .emitir .soma.bate { color: var(--ok); }
+  .emitir .barra-final { position: sticky; bottom: 0; background: var(--fundo); padding: 14px 0; border-top: 1px solid var(--linha); }
+</style>
+
+<div class="emitir">
+  <section class="page-header">
+    <h2>Gerar documentos</h2>
+    <p>
+      <strong><%= ctx.cliente.nome %></strong>
+      <% if (ctx.unidade) { %> · Unidade <%= ctx.unidade.numero %><% } %>
+      <% if (ctx.empreendimento) { %> · <%= ctx.empreendimento.nome %><% } %>
+    </p>
+  </section>
+
+  <% if (geral.length || Object.keys(erros).length) { %>
+    <div class="alerta erro" role="alert">
+      <strong>Nada foi gerado. Corrija o que está marcado em vermelho.</strong>
+      <% if (geral.length || errosDeParcela.length) { %>
+        <ul><% [...geral, ...errosDeParcela].forEach((g) => { %><li><%= g %></li><% }) %></ul>
+      <% } %>
+    </div>
+  <% } %>
+  <% if (avisos.length) { %>
+    <div class="alerta atencao">
+      <strong>Confira antes de gerar</strong> — estes pontos não impedem, mas costumam ser erro de digitação:
+      <ul><% avisos.forEach((a) => { %><li><%= a %></li><% }) %></ul>
+    </div>
+  <% } %>
+
+  <form method="POST" action="<%= acao %>" id="form-emitir" novalidate>
+
+    <!-- ===================================================== documentos -->
+    <section class="form-card secao">
+      <h3>Documentos</h3>
+      <p class="nota">
+        Os dados do cliente e da unidade já vêm do cadastro. Confira, corrija se precisar —
+        o que você mudar aqui fica salvo no cadastro também.
+      </p>
+      <div class="docs">
+        <% ctx.contratos.forEach((c) => { const d = docs[c.tipo]; const jaFeito = !pendentes.includes(c); %>
+          <label class="doc">
+            <input type="checkbox" name="contratoIds" value="<%= c.id %>" data-chave="<%= d.chave %>"
+                   <%= marcados.includes(String(c.id)) ? 'checked' : '' %> />
+            <span>
+              <strong><%= c.tipo %></strong>
+              <small><%= jaFeito ? 'Já gerado — marque para gerar de novo com os dados abaixo.' : 'Aguardando os dados.' %></small>
+            </span>
+          </label>
+        <% }) %>
+      </div>
+    </section>
+
+    <!-- ===================================================== documento -->
+    <section class="form-card secao">
+      <h3>Data</h3>
+      <div class="form-grid">
+        <%- campo('dataDocumento', 'Data do documento', { tipo: 'date', obrig: true }) %>
+        <%- campo('dataCompromisso', 'Data do compromisso de compra e venda', { tipo: 'date', obrig: true,
+              ajuda: 'Usada no Termo de Empréstimo.', attrs: 'data-para="emprestimo"' }) %>
+      </div>
+    </section>
+
+    <!-- ===================================================== comprador -->
+    <section class="form-card secao">
+      <h3>Comprador</h3>
+      <div class="pessoa" role="radiogroup" aria-label="Tipo de pessoa">
+        <label><input type="radio" name="tipoPessoa" value="pf" <%= val('tipoPessoa') !== 'pj' ? 'checked' : '' %> /> Pessoa física</label>
+        <label><input type="radio" name="tipoPessoa" value="pj" <%= val('tipoPessoa') === 'pj' ? 'checked' : '' %> /> Pessoa jurídica</label>
+      </div>
+      <p class="nota" data-pessoa="pj">
+        Os modelos atuais ainda não têm lugar para o representante legal: o contrato sai com a razão
+        social e o CNPJ da empresa.
+      </p>
+      <div class="form-grid">
+        <%- campo('nome', 'Nome completo / razão social', { obrig: true }) %>
+        <%- campo('cpfCnpj', 'CPF / CNPJ', { obrig: true, modo: 'numeric' }) %>
+        <%- campo('nacionalidade', 'Nacionalidade', { ph: 'brasileiro(a)', attrs: 'data-pessoa="pf"' }) %>
+        <%- campo('estadoCivil', 'Estado civil', { opcoes: listas.estadosCivis, attrs: 'data-pessoa="pf"' }) %>
+        <%- campo('profissao', 'Profissão', { attrs: 'data-pessoa="pf"' }) %>
+        <%- campo('rg', 'RG', { attrs: 'data-pessoa="pf"' }) %>
+        <%- campo('orgaoEmissorRg', 'Órgão emissor do RG', { ph: 'SSP/ES', attrs: 'data-pessoa="pf"' }) %>
+        <%- campo('cep', 'CEP', { modo: 'numeric' }) %>
+        <%- campo('endereco', 'Endereço completo', { obrig: true, cheio: true }) %>
+        <%- campo('telefone', 'Telefone com DDD', { modo: 'tel' }) %>
+        <%- campo('email', 'E-mail', { tipo: 'email' }) %>
+      </div>
+    </section>
+
+    <!-- ===================================================== cônjuge -->
+    <section class="form-card secao" data-para="cv anexo anuencia emprestimo" data-pessoa="pf">
+      <h3>Cônjuge</h3>
+      <label class="doc" style="margin-bottom: 12px;">
+        <input type="checkbox" name="conjugeConsta" value="1" id="conjugeConsta" <%= val('conjugeConsta') ? 'checked' : '' %> />
+        <span><strong>O cônjuge consta nos documentos</strong></span>
+      </label>
+      <div class="form-grid" id="campos-conjuge">
+        <%- campo('conjugeNome', 'Nome completo', { obrig: true }) %>
+        <%- campo('conjugeCpf', 'CPF', { obrig: true, modo: 'numeric' }) %>
+        <%- campo('conjugeNacionalidade', 'Nacionalidade') %>
+        <%- campo('conjugeEstadoCivil', 'Estado civil', { opcoes: listas.estadosCivis }) %>
+        <%- campo('conjugeProfissao', 'Profissão') %>
+        <%- campo('conjugeRg', 'RG') %>
+        <%- campo('conjugeOrgaoEmissorRg', 'Órgão emissor do RG') %>
+        <%- campo('conjugeEmail', 'E-mail', { tipo: 'email' }) %>
+      </div>
+    </section>
+
+    <!-- ===================================================== unidade -->
+    <section class="form-card secao">
+      <h3>Unidade <%= ctx.unidade ? ctx.unidade.numero : '' %></h3>
+      <% if (ctx.unidade && unidadeExtenso) { %>
+        <p class="nota">Por extenso, no contrato: <strong><%= unidadeExtenso %></strong>. Gerado a partir do número.</p>
+      <% } %>
+      <div class="form-grid" data-para="cv">
+        <%- campo('tipoImovel', 'Tipo do imóvel', { obrig: true, ph: 'apartamento' }) %>
+        <%- campo('vagasGaragem', 'Vagas de garagem', { obrig: true, modo: 'numeric' }) %>
+        <%- campo('numerosVagas', 'Números das vagas', { ph: '12 e 13' }) %>
+        <%- campo('areaPrivativa', 'Área privativa (m²)', { obrig: true }) %>
+        <%- campo('areaConstrucao', 'Área de construção (m²)', { obrig: true }) %>
+        <%- campo('fracaoIdeal', 'Fração ideal', { obrig: true }) %>
+        <%- campo('descricaoPlanta', 'Descrição da planta', { cheio: true, ph: '3 quartos, 1 suíte, varanda gourmet' }) %>
+      </div>
+    </section>
+
+    <!-- ===================================================== preço -->
+    <section class="form-card secao" data-para="cv">
+      <h3>Preço</h3>
+      <div class="form-grid">
+        <%- campo('precoTotal', 'Preço total (R$)', { obrig: true, extenso: true, modo: 'decimal', ph: '733.000,00' }) %>
+        <%- campo('formaAquisicao', 'Forma de aquisição', { obrig: true, opcoes: ['Parcelado', 'À vista'] }) %>
+        <%- campo('valorFracaoIdeal', 'Valor da fração ideal do terreno (R$)', { obrig: true, extenso: true, modo: 'decimal',
+              ajuda: 'Cláusula 1.4.' }) %>
+        <%- campo('valorCustoConstrucao', 'Custo de construção (R$)', { obrig: true, extenso: true, modo: 'decimal',
+              ajuda: 'Cláusula 3.2.' }) %>
+      </div>
+      <p class="soma" id="soma-fracao"></p>
+      <div class="form-grid" id="a-vista">
+        <%- campo('dataPagamentoAVista', 'Data do pagamento', { tipo: 'date' }) %>
+        <%- campo('formaPagamentoAVista', 'Forma de pagamento', { opcoes: listas.formas }) %>
+      </div>
+    </section>
+
+    <!-- ===================================================== aporte (SCP) -->
+    <section class="form-card secao" data-para="scp">
+      <h3>Aporte na SCP</h3>
+      <div class="form-grid">
+        <%- campo('valorAporte', 'Valor do aporte (R$)', { obrig: true, extenso: true, modo: 'decimal',
+              ajuda: 'Se ficar em branco, vira a soma das parcelas abaixo.' }) %>
+      </div>
+    </section>
+
+    <!-- ===================================================== parcelas -->
+    <section class="form-card secao" data-para="cv scp" id="secao-parcelas">
+      <h3>Parcelas</h3>
+      <p class="nota">
+        Uma linha por tipo de parcela. Em "Mensais" de 24 vezes, o valor é o de UMA parcela e a quantidade é 24.
+        O percentual de cada uma é calculado.
+      </p>
+      <div class="tabela-parcelas">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 18%;">Tipo</th><th style="width: 15%;">Valor de uma (R$)</th><th style="width: 8%;">Qtd.</th>
+              <th style="width: 15%;">1º vencimento</th><th style="width: 9%;">Reajusta?</th><th style="width: 10%;">Índice</th>
+              <th style="width: 17%;">Forma de pagamento</th><th style="width: 8%;"></th>
+            </tr>
+          </thead>
+          <tbody id="parcelas">
+            <% parcelas.forEach((p, i) => { %>
+              <tr class="parcela" <%= erros['parcela_' + i] ? 'aria-invalid="true"' : '' %>>
+                <td><input name="parcelaTipo" value="<%= p.tipo || '' %>" list="tipos-parcela" aria-label="Tipo da parcela" /></td>
+                <td><input name="parcelaValor" value="<%= p.valor || '' %>" inputmode="decimal" aria-label="Valor de uma parcela" /></td>
+                <td><input name="parcelaQtd" value="<%= p.qtd || '' %>" inputmode="numeric" aria-label="Quantidade" /></td>
+                <td><input name="parcelaVencimento" type="date" value="<%= p.vencimento || '' %>" aria-label="Primeiro vencimento" /></td>
+                <td>
+                  <select name="parcelaReajustavel" aria-label="Reajustável">
+                    <option value="Não" <%= p.reajustavel !== 'Sim' ? 'selected' : '' %>>Não</option>
+                    <option value="Sim" <%= p.reajustavel === 'Sim' ? 'selected' : '' %>>Sim</option>
+                  </select>
+                </td>
+                <td>
+                  <select name="parcelaIndice" aria-label="Índice">
+                    <option value=""></option>
+                    <% listas.indices.forEach((x) => { %><option <%= p.indice === x ? 'selected' : '' %>><%= x %></option><% }) %>
+                  </select>
+                </td>
+                <td>
+                  <select name="parcelaForma" aria-label="Forma de pagamento">
+                    <option value=""></option>
+                    <% listas.formas.forEach((x) => { %><option <%= p.forma === x ? 'selected' : '' %>><%= x %></option><% }) %>
+                  </select>
+                </td>
+                <td><button type="button" class="button secondary remover" style="padding: 6px 10px; font-size: 12px;">Tirar</button></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <div class="actions" style="margin-top: 10px;">
+        <button type="button" class="button secondary" id="add-parcela">+ Parcela</button>
+      </div>
+      <p class="soma" id="soma-parcelas"></p>
+
+      <datalist id="tipos-parcela">
+        <% listas.tiposParcela.forEach((t) => { %><option value="<%= t %>"></option><% }) %>
+      </datalist>
+      <datalist id="tipos-parcela-scp">
+        <% listas.tiposParcelaScp.forEach((t) => { %><option value="<%= t %>"></option><% }) %>
+      </datalist>
+    </section>
+
+    <!-- ===================================================== testemunhas -->
+    <section class="form-card secao" data-para="cv">
+      <h3>Testemunhas <span style="font-weight: 400; color: var(--texto-suave); font-size: 14px;">(opcional)</span></h3>
+      <div class="form-grid">
+        <%- campo('testemunha1Nome', 'Testemunha 1 — nome') %>
+        <%- campo('testemunha1Cpf', 'Testemunha 1 — CPF', { modo: 'numeric' }) %>
+        <%- campo('testemunha2Nome', 'Testemunha 2 — nome') %>
+        <%- campo('testemunha2Cpf', 'Testemunha 2 — CPF', { modo: 'numeric' }) %>
+      </div>
+    </section>
+
+    <div class="barra-final actions">
+      <button type="submit" class="button" id="gerar">Gerar documentos</button>
+      <a class="button secondary" href="/contratos">Cancelar</a>
+    </div>
+  </form>
+</div>
+
+<script src="/js/emitir.js"></script>
+
+<%- include("partials/footer") %>

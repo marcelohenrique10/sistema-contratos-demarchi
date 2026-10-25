@@ -80,7 +80,13 @@ const CORRETOR_PODE = [
   ['POST', /^\/contratos\/iniciar$/],
   ['POST', /^\/documentos\/enviar$/],
   ['POST', /^\/unidades\/\d+\/reservar$/],
-  ['POST', /^\/unidades\/\d+\/liberar$/]
+  ['POST', /^\/unidades\/\d+\/liberar$/],
+
+  // Formulário interno de contrato: é o trabalho do corretor
+  ['GET', /^\/operacoes\/\d+\/(\d+|sem-unidade)\/emitir$/],
+  ['POST', /^\/operacoes\/\d+\/(\d+|sem-unidade)\/emitir$/],
+  ['GET', /^\/emissoes\/\d+$/],
+  ['GET', /^\/api\/extenso$/]
 ];
 
 router.use((req, res, next) => {
@@ -704,6 +710,7 @@ router.get('/contratos', (req, res) => {
     operacoes, clientes, empreendimentos, unidades,
     // Os sete numa lista só. Os de encerramento não viram pendente: a rota
     // os gera na hora. Corretor não os enxerga — o distrato desfaz venda.
+    formularioTipos: Object.keys(require('../services/formulario').DOCS),
     catalogo: res.locals.ehAdmin
       ? documentoSvc.CATALOGO
       : documentoSvc.CATALOGO.filter((m) => m.origem === 'formulario'),
@@ -924,5 +931,9 @@ router.post('/financeiro/:id/excluir', (req, res) => {
   financeiro.excluir(req.params.id);
   voltarParaFinanceiro(req, res);
 });
+
+// Formulário interno de contrato. Registrado aqui, depois da lista de
+// permissões, para passar pelo mesmo porteiro que o resto das páginas.
+router.use(require('./emitir'));
 
 module.exports = router;

@@ -210,6 +210,22 @@ if (!colunasClientes.includes('criadoPor')) {
   }
 });
 
+// Cada vez que o formulário interno gera documentos, guardamos o que foi
+// preenchido e o que saiu. Serve a duas coisas: reabrir o formulário já
+// preenchido (corrigir um valor não exige redigitar a venda inteira) e responder,
+// meses depois, quem emitiu o quê e com quais dados.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS emissoes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    clienteId INTEGER NOT NULL,
+    unidadeId INTEGER,
+    usuarioId INTEGER,
+    dados TEXT,
+    resultado TEXT,
+    criadoEm TEXT DEFAULT (datetime('now'))
+  )
+`);
+
 // Características da unidade que o contrato imprime.
 //
 // Até aqui vagas, áreas, fração ideal e planta eram redigitadas a cada

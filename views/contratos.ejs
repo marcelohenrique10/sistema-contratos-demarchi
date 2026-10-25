@@ -1,5 +1,11 @@
 <%- include("partials/header") %>
 
+<%
+  // Documento que sai do formulário interno (os de encerramento não).
+  const doFormulario = (c) => formularioTipos.includes(String(c.nome || '').split(' - ')[0].trim());
+  const linkFormulario = (op, c) => `/operacoes/${op.clienteId}/${op.unidadeId || 'sem-unidade'}/emitir?contrato=${c.id}`;
+%>
+
 <div class="container">
   <!-- Cabeçalho com o novo atalho geral para o Autentique -->
   <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;">
@@ -247,17 +253,20 @@
                   <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center;">
                     <% if (c.documento && c.documento.disponivel) { %>
                       <a href="/storage/<%= c.documento.caminho.replace(/^\/storage\//, '') %>" class="button" style="padding: 6px 12px; font-size: 12px;" target="_blank">Baixar</a>
+                      <% if (doFormulario(c)) { %>
+                        <a href="<%= linkFormulario(op, c) %>" class="button secondary" style="padding: 6px 12px; font-size: 12px;">Corrigir</a>
+                      <% } %>
                       <!-- Botão de ação direta para o Autentique solicitado pelo Marcelo -->
                       <a href="https://app.autentique.com.br" class="button secondary" style="padding: 6px 12px; font-size: 12px; background-color: #475569;" target="_blank">Enviar p/ Assinatura</a>
                     <% } else if (c.status === 'pendente') { %>
-                      <%# Cada documento pendente leva direto ao formulário. O link é o
-                          público do Google Forms, e vem gravado no próprio contrato. %>
-                      <a href="<%= c.formLink || formLink %>" target="_blank" rel="noopener noreferrer"
-                         class="button" style="padding: 6px 12px; font-size: 12px;">Preencher formulário</a>
+                      <%# O formulário agora é do sistema: já traz o cliente e a unidade
+                          preenchidos, e só pergunta o que é da negociação. %>
+                      <% if (doFormulario(c)) { %>
+                        <a href="<%= linkFormulario(op, c) %>" class="button" style="padding: 6px 12px; font-size: 12px;">Preencher</a>
+                      <% } %>
                       <a href="/documentos/enviar?cliente=<%= op.clienteId %>&contrato=<%= c.id %>" class="button secondary" style="padding: 6px 12px; font-size: 12px;">Anexar</a>
-                    <% } else { %>
-                      <a href="<%= c.formLink || formLink %>" target="_blank" rel="noopener noreferrer"
-                         class="button secondary" style="padding: 6px 12px; font-size: 12px;">Preencher formulário</a>
+                    <% } else if (doFormulario(c)) { %>
+                      <a href="<%= linkFormulario(op, c) %>" class="button secondary" style="padding: 6px 12px; font-size: 12px;">Preencher</a>
                     <% } %>
                     <form method="POST" action="/contratos/<%= c.id %>/excluir" style="display: inline;" onsubmit="return confirm('Tem certeza que deseja excluir?')">
                       <button type="submit" class="button danger" style="padding: 6px 12px; font-size: 12px;">Excluir</button>
