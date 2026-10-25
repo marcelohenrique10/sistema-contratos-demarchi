@@ -210,6 +210,19 @@ if (!colunasClientes.includes('criadoPor')) {
   }
 });
 
+// Características da unidade que o contrato imprime.
+//
+// Até aqui vagas, áreas, fração ideal e planta eram redigitadas a cada
+// contrato, no formulário. Mas são propriedades da UNIDADE, não da negociação:
+// cadastradas uma vez, o formulário interno só as confere.
+[
+  'tipoImovel', 'vagasGaragem', 'numerosVagas', 'areaPrivativa',
+  'areaConstrucao', 'fracaoIdeal', 'descricaoPlanta'
+].forEach((coluna) => {
+  const atuais = db.prepare('PRAGMA table_info(unidades)').all().map((c) => c.name);
+  if (!atuais.includes(coluna)) db.exec(`ALTER TABLE unidades ADD COLUMN ${coluna} TEXT`);
+});
+
 // Quem reservou a unidade e quando. Sem isso, "quem chegou primeiro" — que é
 // disputa de comissão — não tem resposta.
 const colunasUnidades = db.prepare('PRAGMA table_info(unidades)').all().map((c) => c.name);

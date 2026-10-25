@@ -66,7 +66,29 @@ function criarEmLote({ empreendimentoId, pavimentoInicial, pavimentoFinal, porPa
   return { criadas, puladas };
 }
 
-function atualizar(id, { numero, pavimento, tipologia, metragem, status }) {
+// O que o contrato imprime sobre a unidade, além do que o espelho já mostra.
+const CARACTERISTICAS = ['tipoImovel', 'vagasGaragem', 'numerosVagas', 'areaPrivativa',
+  'areaConstrucao', 'fracaoIdeal', 'descricaoPlanta'];
+
+/**
+ * Grava só as características informadas. Quem chama pode mandar parte delas
+ * (o formulário de contrato confere e corrige o que muda no ato); campo ausente
+ * não apaga o que já estava guardado.
+ */
+function salvarCaracteristicas(id, dados) {
+  const unidadeId = parseInt(id);
+  const atual = db.prepare('SELECT * FROM unidades WHERE id = ?').get(unidadeId);
+  if (!atual) throw new Error('Unidade não encontrada.');
+
+  const presentes = CARACTERISTICAS.filter((c) => c in dados);
+  if (!presentes.length) return;
+
+  const sets = presentes.map((c) => `${c} = ?`).join(', ');
+  db.prepare(`UPDATE unidades SET ${sets} WHERE id = ?`)
+    .run([...presentes.map((c) => String(dados[c] ?? '').trim() || null), unidadeId]);
+}
+
+function atualizar(id, { numero, pavimento, tipologia, metragem, status, ...resto }) {
   const unidadeId = parseInt(id);
   const atual = db.prepare('SELECT * FROM unidades WHERE id = ?').get(unidadeId);
   if (!atual) throw new Error('Unidade não encontrada.');
@@ -88,6 +110,8 @@ function atualizar(id, { numero, pavimento, tipologia, metragem, status }) {
   db.prepare(
     'UPDATE unidades SET numero = ?, pavimento = ?, tipologia = ?, metragem = ?, status = ?, clienteId = ? WHERE id = ?'
   ).run([num, pavimento || null, tipologia || null, metragem || null, st, clienteId, unidadeId]);
+
+  salvarCaracteristicas(unidadeId, resto);
 }
 
 function impacto(id) {
@@ -111,4 +135,4 @@ function excluir(id) {
   db.prepare('DELETE FROM unidades WHERE id = ?').run(unidadeId);
 }
 
-module.exports = { criar, criarEmLote, atualizar, impacto, excluir, STATUS_VALIDOS };
+module.exports = { criar, criarEmLote, atualizar, salvarCaracteristicas, impacto, excluir, STATUS_VALIDOS, CARACTERISTICAS };

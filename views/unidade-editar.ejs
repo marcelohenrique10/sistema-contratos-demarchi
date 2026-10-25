@@ -46,6 +46,45 @@
       </div>
     </div>
 
+
+    <h3 style="margin-top:26px;">Dados para o contrato</h3>
+    <p style="color:#6b7280;font-size:14px;margin-top:-8px;">
+      Cadastre uma vez. O formulário de contrato traz estes dados já preenchidos, em vez de
+      pedi-los de novo a cada venda.
+    </p>
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="tipoImovel">Tipo do imóvel</label>
+        <input type="text" id="tipoImovel" name="tipoImovel" value="<%= unidade.tipoImovel || '' %>" placeholder="apartamento" />
+        <small>Como o contrato chama a unidade: apartamento, cobertura, sala comercial…</small>
+      </div>
+      <div class="form-group">
+        <label for="vagasGaragem">Vagas de garagem</label>
+        <input type="text" id="vagasGaragem" name="vagasGaragem" value="<%= unidade.vagasGaragem || '' %>" placeholder="1" />
+      </div>
+      <div class="form-group">
+        <label for="numerosVagas">Números das vagas</label>
+        <input type="text" id="numerosVagas" name="numerosVagas" value="<%= unidade.numerosVagas || '' %>" placeholder="12 e 13" />
+      </div>
+      <div class="form-group">
+        <label for="areaPrivativa">Área privativa (m²)</label>
+        <input type="text" id="areaPrivativa" name="areaPrivativa" value="<%= unidade.areaPrivativa || '' %>" placeholder="93,89" />
+      </div>
+      <div class="form-group">
+        <label for="areaConstrucao">Área de construção (m²)</label>
+        <input type="text" id="areaConstrucao" name="areaConstrucao" value="<%= unidade.areaConstrucao || '' %>" placeholder="108,60" />
+      </div>
+      <div class="form-group">
+        <label for="fracaoIdeal">Fração ideal</label>
+        <input type="text" id="fracaoIdeal" name="fracaoIdeal" value="<%= unidade.fracaoIdeal || '' %>" placeholder="0,0179" />
+      </div>
+      <div class="form-group full">
+        <label for="descricaoPlanta">Descrição da planta</label>
+        <input type="text" id="descricaoPlanta" name="descricaoPlanta" value="<%= unidade.descricaoPlanta || '' %>"
+               placeholder="3 quartos, 1 suíte, varanda gourmet" />
+      </div>
+    </div>
+
     <div class="actions" style="margin-top:16px;">
       <button type="submit" class="button">Salvar alterações</button>
       <a class="button secondary" href="/empreendimentos/<%= unidade.empreendimentoId %>">Cancelar</a>
