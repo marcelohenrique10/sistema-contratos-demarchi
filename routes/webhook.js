@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
-const { gerarDocumento } = require('../services/documento');
-const { registrarRecebiveis } = require('../services/recebiveis');
+const emissao = require('../services/emissao');
+const { resolverUnidadeId, normalizarTipoDocumento } = emissao;
 const usuarios = require('../services/usuarios');
 const formato = require('../services/formato');
 
@@ -68,49 +68,6 @@ function resolverEmpreendimentoId({ empreendimentoId, empreendimentoNome }) {
 /** Os nomes aceitos, para a mensagem de erro dizer o que fazer. */
 function nomesDeEmpreendimentos() {
   return db.prepare('SELECT nome FROM empreendimentos ORDER BY nome').all().map((e) => e.nome);
-}
-
-// O formulário informa o número da unidade ("1001"), não o id do banco.
-function resolverUnidadeId({ unidadeId, unidadeNumero, empreendimentoId }) {
-  if (unidadeId) return parseInt(unidadeId);
-  if (!unidadeNumero || !empreendimentoId) return null;
-
-  const unidade = db.prepare(
-    'SELECT id FROM unidades WHERE empreendimentoId = ? AND TRIM(numero) = TRIM(?)'
-  ).get([empreendimentoId, String(unidadeNumero)]);
-
-  return unidade ? unidade.id : null;
-}
-
-// Remove o prefixo numérico da lista suspensa do formulário ("1. Contrato..." -> "Contrato...")
-function normalizarTipoDocumento(tipo) {
-  return String(tipo || '').replace(/^\s*\d+\s*[.)-]\s*/, '').trim();
-}
-
-/**
- * Guarda no cliente a qualificação que veio no documento.
- *
- * Só preenche o que está vazio: o cadastro manual, feito por alguém da
- * equipe, vale mais do que uma resposta de formulário reprocessada.
- */
-function guardarQualificacao(clienteId, documento) {
-  const c = documento.comprador || {};
-  const j = documento.conjuge || {};
-
-  const campos = {
-    nacionalidade: c.nacionalidade, estadoCivil: c.estadoCivil, profissao: c.profissao,
-    rg: c.rg, orgaoEmissorRg: c.orgaoEmissorRg, endereco: c.endereco, cep: c.cep,
-    conjugeNome: j.nome, conjugeCpf: j.cpf, conjugeRg: j.rg,
-    conjugeOrgaoEmissorRg: j.orgaoEmissorRg, conjugeNacionalidade: j.nacionalidade,
-    conjugeProfissao: j.profissao, conjugeEstadoCivil: j.estadoCivil, conjugeEmail: j.email
-  };
-
-  const comValor = Object.entries(campos).filter(([, v]) => String(v || '').trim());
-  if (!comValor.length) return;
-
-  const sets = comValor.map(([k]) => `${k} = COALESCE(NULLIF(${k}, ''), ?)`).join(', ');
-  db.prepare(`UPDATE clientes SET ${sets} WHERE id = ?`)
-    .run([...comValor.map(([, v]) => String(v).trim()), clienteId]);
 }
 
 // Aviso que não foi para o responsável precisa deixar rastro: o cadastro é
@@ -337,45 +294,11 @@ router.post('/documento', checkAuth, async (req, res) => {
       }
     }
 
-    const empreendimento = empreendimentoId
-      ? db.prepare('SELECT * FROM empreendimentos WHERE id = ?').get(empreendimentoId)
-      : null;
-
-    const resultado = await gerarDocumento({ documento, empreendimento, empreendimentoId, unidadeNumero });
-    const unidadeId = resolverUnidadeId({ unidadeId: req.body.unidadeId, unidadeNumero, empreendimentoId });
-    const faltando = resultado.placeholdersSemValor;
-
-    const insercao = db.prepare(
-      'INSERT INTO documentos (tipo, nome, empreendimentoId, unidadeId, clienteId, caminho, data, respostaId, contratoId, origem, camposSemValor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run([
-      normalizarTipoDocumento(documento.tipo),
-      `${normalizarTipoDocumento(documento.tipo)} - ${(documento.comprador || {}).nome || 'sem nome'}`,
-      empreendimentoId || null,
-      unidadeId,
-      clienteId ? parseInt(clienteId) : null,
-      resultado.caminhoPublico,
-      new Date().toISOString().slice(0, 10),
-      respostaId || null,
-      contratoId || null,
-      'gerado',
-      JSON.stringify(faltando)
-    ]);
-
-    if (contratoId) {
-      db.prepare('UPDATE contratos SET status = ? WHERE id = ?').run(['gerado', contratoId]);
-    }
-
-    // A qualificação que acabou de entrar no documento fica guardada no
-    // cliente. É dela que a quitação e o distrato vivem, meses depois,
-    // quando não há mais formulário a preencher.
-    if (clienteId) guardarQualificacao(parseInt(clienteId), documento);
-
-    // As parcelas do contrato viram cronograma de recebíveis no financeiro.
-    const recebiveis = registrarRecebiveis({
-      contratoId,
-      empreendimentoId,
-      compraVenda: documento.compraVenda
+    const emitido = await emissao.emitir({
+      documento, empreendimentoId, unidadeId: req.body.unidadeId, unidadeNumero,
+      clienteId, contratoId, respostaId
     });
+    const faltando = emitido.camposSemValor;
 
     // Documento gerado com buraco continua parecendo pronto. O aviso é o
     // único jeito de alguém notar — registramos também no log.
@@ -386,11 +309,11 @@ router.post('/documento', checkAuth, async (req, res) => {
 
     res.json({
       sucesso: true,
-      id: Number(insercao.lastInsertRowid),
-      arquivo: resultado.caminhoPublico,
+      id: emitido.id,
+      arquivo: emitido.arquivo,
       camposSemValor: faltando,
-      camposNaoAplicaveis: resultado.placeholdersNaoAplicaveis,
-      recebiveis,
+      camposNaoAplicaveis: emitido.camposNaoAplicaveis,
+      recebiveis: emitido.recebiveis,
       aviso
     });
   } catch (err) {
