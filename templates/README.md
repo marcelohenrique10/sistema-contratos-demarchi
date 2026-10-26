@@ -53,6 +53,50 @@ contratos como VENDEDORA. Cadastrados na tela de Empreendimentos.
 Onde o contrato fala da parte contratante, use `RAZAO_SOCIAL` (é a pessoa
 jurídica). Onde fala do empreendimento como obra, use `NOME`.
 
+### Incorporação — vem do banco (cadastro do empreendimento)
+
+Item II do Quadro Resumo e cláusula 3 do Contrato de Promessa. Valem para todas
+as unidades do empreendimento. O administrador edita na tela do empreendimento
+ou no formulário de contrato; o corretor só vê. A lista fica em
+`services/incorporacao.js`.
+
+| Placeholder | Coluna em `empreendimentos` |
+|---|---|
+| `[INCORPORACAO_REGISTRO]` | `registroIncorporacao` |
+| `[INCORPORACAO_PATRIMONIO_AFETACAO]` | `patrimonioAfetacao` |
+| `[IMOVEL_ENDERECO]` | `enderecoImovel` — endereço do terreno, como na matrícula |
+| `[ALVARA_CONSTRUCAO]` | `alvaraConstrucao` |
+| `[DATA_PREVISTA_ENTREGA]` | `dataEntrega` — sai dd/mm/aaaa |
+| `[ORCAMENTO_DATA]` | `dataOrcamento` — cláusula 3.2, "aos preços vigentes em" |
+| `[TIPO_PADRONIZADO]` | `tipoPadronizado` — "101" sai "101 (Cento e um)" |
+| `[AREAS_SUB_ROGADAS]` | `areasSubRogadas` — cláusula 3.3, com o artigo ("das Lojas...") |
+
+As áreas sub-rogadas **não são a unidade comprada**: são as unidades cuja
+construção o comprador paga na proporção da fração ideal, por conta do contrato
+de incorporação com o dono do terreno (a cláusula 1.4 cita "o custo de
+construção das áreas sub-rogadas enumeradas na cláusula terceira").
+
+### Intermediadora — opcional, vem do formulário
+
+Sem intermediadora, o bloco inteiro (título e texto) **sai do documento**:
+`gerarDocumento` remove os parágrafos com placeholder `INTERMEDIADORA_`.
+
+| Placeholder | Campo |
+|---|---|
+| `[INTERMEDIADORA_TITULO]` | "INTERMEDIADORA" quando há; marca o título para sair junto |
+| `[INTERMEDIADORA_RAZAO_SOCIAL]` | Razão social |
+| `[INTERMEDIADORA_CNPJ]` | CNPJ |
+| `[INTERMEDIADORA_CRECI]` | CRECI jurídico |
+| `[INTERMEDIADORA_ENDERECO]` | Endereço da sede, com CEP e cidade |
+| `[INTERMEDIADORA_REPRESENTANTE]` | Nome do representante |
+| `[INTERMEDIADORA_REPRESENTANTE_QUALIFICACAO]` | ", sócia, brasileira, ..." — a vírgula vem junto |
+
+### Observações do quadro de pagamento
+
+`[OBS_PAGAMENTO]` é um parágrafo repetido: uma cópia por linha do campo
+"Observações" do formulário, numeradas a partir de 2) (a 1) é fixa no modelo).
+Sem observação, o parágrafo sai.
+
 ### Unidade
 
 | Placeholder | Campo no formulário |
@@ -117,22 +161,21 @@ jurídico** — não são decisões de código:
   jurídicas. Precisa de mapeamento manual validado.
 - **Permuta de concreto e de materiais** não têm origem de dados: o formulário
   nunca coletou esses campos.
-- **Tabela de parcelas** do contrato de compra e venda ainda tem valores de
-  exemplo fixos (Sinal / Mensais / Chaves). Precisa ser gerada a partir das
-  parcelas 1–5 do formulário.
 - No contrato de compra e venda, o campo rotulado `CPF:` usava o placeholder
   `[CNPJ]` por engano do documento original. Mapeado para `[COMPRADOR_CPF]`.
   **Confirmar com o jurídico.**
-- **Dois valores do contrato de compra e venda seguem como `XXXXXXX`**, porque
-  não vêm do comprador e sim do memorial de incorporação — são por unidade:
-  - cláusula **1.4**: valor pago pela *fração ideal do terreno*;
-  - cláusula **3.2**: *custo de construção* estimado da unidade.
-
-  Para o sistema preencher, esses dois precisam virar campos do cadastro da
-  unidade. Enquanto isso, ficam para preenchimento à mão.
-- Ainda no contrato de compra e venda, a cláusula 3.2 traz duas informações
-  fixas do High Tower: a data-base do orçamento (`13/06/2022`) e o padrão de
-  obra (`101`). Gerar contrato de outro empreendimento sai com esses valores.
+- **Os dados que o modelo trazia no item II e na cláusula 3** (matrícula
+  22.074, alvará 224/2021, entrega 23/01/2025, orçamento de 13/06/2022, tipo
+  101, Lojas 01 a 04) viraram campos do empreendimento em 26/10/2026, sem
+  aproveitar esses valores: pelas datas, parecem ser de um empreendimento
+  anterior ao High Tower (a SPE dele foi aberta em 08/2025). O cliente precisa
+  informar os do High Tower.
+- A **cláusula 1.3** ainda descreve o terreno por escrito fixo (lotes 6 e 8,
+  quadra 10, Rua Flor do Guarujá nº 47, matrícula 22.074). Se os dados do item
+  II mudarem, ela precisa acompanhar.
+- O bloco do **cônjuge** sai com os rótulos vazios quando não há cônjuge. Para
+  sumir como a intermediadora, falta separar o nome do cônjuge da linha de
+  assinatura, que divide o parágrafo com o nome do comprador.
 - Os blocos de assinatura trazem só o **nome** do comprador e do cônjuge, sem
   linha de CPF — as testemunhas têm. Se o jurídico quiser CPF ali também,
   é alteração no modelo (há 15 blocos de rubrica no documento).

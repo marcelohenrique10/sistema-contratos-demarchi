@@ -3,6 +3,7 @@ const db = require('../database');
 const F = require('../services/formulario');
 const { reaisPorExtenso, inteiroPorExtenso } = require('../services/extenso');
 const v = require('../services/validacao');
+const incorporacao = require('../services/incorporacao');
 
 /**
  * Formulário interno de contrato.
@@ -17,6 +18,13 @@ function caminhoDaOperacao(clienteId, unidadeId) {
   return `/operacoes/${clienteId}/${unidadeId || 'sem-unidade'}/emitir`;
 }
 
+// O contexto da operação, com o que este usuário pode corrigir nela.
+function contextoPara(req, res) {
+  const ctx = F.contexto(req.params.clienteId, req.params.unidadeId);
+  ctx.editaEmpreendimento = Boolean(res.locals.ehAdmin);
+  return ctx;
+}
+
 function renderizar(res, ctx, { valores, marcados, erros = {}, geral = [], avisos = [] }, status = 200) {
   const numero = ctx.unidade ? String(ctx.unidade.numero).trim() : '';
   res.status(status).render('emitir', {
@@ -25,6 +33,7 @@ function renderizar(res, ctx, { valores, marcados, erros = {}, geral = [], aviso
     marcados: marcados.map(String),
     erros, geral, avisos,
     docs: F.DOCS,
+    camposIncorporacao: incorporacao.CAMPOS,
     acao: caminhoDaOperacao(ctx.cliente.id, ctx.uid),
     unidadeExtenso: /^\d+$/.test(numero) ? inteiroPorExtenso(parseInt(numero, 10)) : '',
     listas: {
@@ -37,7 +46,7 @@ function renderizar(res, ctx, { valores, marcados, erros = {}, geral = [], aviso
 router.get('/operacoes/:clienteId/:unidadeId/emitir', (req, res) => {
   let ctx;
   try {
-    ctx = F.contexto(req.params.clienteId, req.params.unidadeId);
+    ctx = contextoPara(req, res);
   } catch (e) {
     return res.redirect('/contratos?erro=' + encodeURIComponent(e.message));
   }
@@ -60,7 +69,7 @@ router.get('/operacoes/:clienteId/:unidadeId/emitir', (req, res) => {
 router.post('/operacoes/:clienteId/:unidadeId/emitir', async (req, res) => {
   let ctx;
   try {
-    ctx = F.contexto(req.params.clienteId, req.params.unidadeId);
+    ctx = contextoPara(req, res);
   } catch (e) {
     return res.redirect('/contratos?erro=' + encodeURIComponent(e.message));
   }

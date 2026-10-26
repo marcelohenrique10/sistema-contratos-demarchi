@@ -2,6 +2,7 @@ const db = require('../database');
 const emissao = require('./emissao');
 const exclusao = require('./exclusao');
 const unidadesSvc = require('./unidades');
+const incorporacao = require('./incorporacao');
 const formato = require('./formato');
 const v = require('./validacao');
 const { reaisPorExtenso, inteiroPorExtenso } = require('./extenso');
@@ -52,9 +53,13 @@ const CAMPOS_COMPRADOR = ['nome', 'cpfCnpj', 'nacionalidade', 'estadoCivil', 'pr
   'orgaoEmissorRg', 'endereco', 'cep', 'telefone', 'email'];
 const CAMPOS_CONJUGE = ['conjugeNome', 'conjugeCpf', 'conjugeRg', 'conjugeOrgaoEmissorRg',
   'conjugeNacionalidade', 'conjugeProfissao', 'conjugeEstadoCivil', 'conjugeEmail'];
+// Intermediadora: opcional, como o cônjuge. Sem ela, o bloco sai do contrato.
+const CAMPOS_INTERMEDIADORA = ['intermediadoraRazaoSocial', 'intermediadoraCnpj', 'intermediadoraCreci',
+  'intermediadoraEndereco', 'intermediadoraRepresentante', 'intermediadoraQualificacao'];
 const CAMPOS_NEGOCIACAO = ['precoTotal', 'valorFracaoIdeal', 'valorCustoConstrucao', 'formaAquisicao',
   'dataPagamentoAVista', 'formaPagamentoAVista', 'testemunha1Nome', 'testemunha1Cpf',
-  'testemunha2Nome', 'testemunha2Cpf', 'dataCompromisso', 'valorAporte'];
+  'testemunha2Nome', 'testemunha2Cpf', 'dataCompromisso', 'valorAporte',
+  'intermediadoraConsta', ...CAMPOS_INTERMEDIADORA, 'observacoesPagamento'];
 
 function hojeIso() {
   return new Date().toISOString().slice(0, 10);
@@ -108,7 +113,23 @@ function contexto(clienteId, unidadeId) {
     .map((c) => ({ ...c, tipo: tipoDoContrato(c.nome) }))
     .filter((c) => DOCS[c.tipo]);
 
-  return { cliente, unidade, uid, empreendimento, empreendimentoId, contratos };
+  // Quem pode corrigir os dados da incorporação daqui. Corretor não edita
+  // empreendimento em lugar nenhum do sistema, então aqui também só confere.
+  // A rota define; o padrão é o mais fechado.
+  return { cliente, unidade, uid, empreendimento, empreendimentoId, contratos, editaEmpreendimento: false };
+}
+
+/**
+ * A intermediadora costuma se repetir de uma venda para outra. Sem dado
+ * desta operação, os campos vêm da última venda que teve uma — mas a caixa
+ * "houve intermediadora" não vem marcada: incluir continua sendo decisão.
+ */
+function ultimaIntermediadora() {
+  const linha = db.prepare(
+    "SELECT dados FROM emissoes WHERE dados LIKE '%\"intermediadoraConsta\":\"1\"%' ORDER BY id DESC LIMIT 1"
+  ).get();
+  if (!linha) return null;
+  try { return JSON.parse(linha.dados); } catch (_) { return null; }
 }
 
 function ultimaEmissao(ctx) {
@@ -144,6 +165,15 @@ function valoresIniciais(ctx) {
   // digitado da última vez, para corrigir um valor sem redigitar a venda.
   CAMPOS_NEGOCIACAO.forEach((k) => { if (ultima[k] != null) valores[k] = ultima[k]; });
   if (Array.isArray(ultima.parcelas)) valores.parcelas = ultima.parcelas;
+
+  if (!CAMPOS_INTERMEDIADORA.some((k) => valores[k])) {
+    const anterior = ultimaIntermediadora();
+    if (anterior) CAMPOS_INTERMEDIADORA.forEach((k) => { valores[k] = anterior[k] ?? ''; });
+  }
+
+  // Sempre do cadastro do empreendimento: é lá que eles valem.
+  const emp = ctx.empreendimento || {};
+  incorporacao.NOMES.forEach((k) => { valores[k] = emp[k] ?? ''; });
 
   return valores;
 }
@@ -185,6 +215,15 @@ function interpretar(body, ctx) {
   [...CAMPOS_COMPRADOR, ...CAMPOS_CONJUGE, ...unidadesSvc.CARACTERISTICAS, ...CAMPOS_NEGOCIACAO,
     'dataDocumento', 'conjugeConsta'].forEach((k) => { valores[k] = texto(body, k); });
   valores.parcelas = lerParcelasDoEnvio(body);
+
+  // Dados da incorporação: o administrador corrige aqui e grava no
+  // empreendimento; para o corretor valem os do cadastro, venha o que vier.
+  // Campo que nem veio no envio também fica com o do cadastro — apagar exige
+  // mandá-lo em branco.
+  const emp = ctx.empreendimento || {};
+  incorporacao.NOMES.forEach((k) => {
+    valores[k] = ctx.editaEmpreendimento && k in body ? texto(body, k) : String(emp[k] ?? '').trim();
+  });
 
   // --- o que se vai gerar
   const escolhidos = lista(body, 'contratoIds').filter(Boolean);
@@ -269,6 +308,39 @@ function interpretar(body, ctx) {
     }
 
     if (!['Parcelado', 'À vista'].includes(valores.formaAquisicao)) erros.formaAquisicao = 'Escolha a forma de aquisição.';
+
+    // Dados da incorporação (item II e cláusula 3). Em branco, o contrato
+    // sairia com "Alvará de Construção nº:" vazio — não gera.
+    const faltando = incorporacao.CAMPOS.filter((c) => !valores[c.nome]);
+    if (ctx.editaEmpreendimento) {
+      faltando.forEach((c) => { erros[c.nome] = `Informe: ${c.rotulo.toLowerCase()}.`; });
+    } else if (faltando.length && ctx.empreendimento) {
+      geral.push(`O cadastro do empreendimento está sem: ${faltando.map((c) => c.rotulo.toLowerCase()).join(', ')}. `
+        + 'Peça a um administrador para preencher.');
+    }
+    ['dataEntrega', 'dataOrcamento'].forEach((k) => {
+      if (valores[k] && !v.dataIso(valores[k])) erros[k] = 'Data inválida.';
+      else if (valores[k]) valores[k] = v.dataIso(valores[k]);
+    });
+
+    // O botão de texto de permuta deixa lacunas para completar; elas não
+    // podem chegar ao contrato.
+    if (/\[descreva|R\$\s*_{2,}/i.test(valores.observacoesPagamento)) {
+      erros.observacoesPagamento = 'Complete as lacunas do texto de permuta (o valor e a descrição do imóvel).';
+    }
+
+    // Intermediadora, se houve
+    if (valores.intermediadoraConsta) {
+      obrigatorio('intermediadoraRazaoSocial', 'a razão social da intermediadora');
+      obrigatorio('intermediadoraCnpj', 'o CNPJ da intermediadora');
+      obrigatorio('intermediadoraCreci', 'o CRECI jurídico da intermediadora');
+      obrigatorio('intermediadoraEndereco', 'o endereço da sede da intermediadora');
+      obrigatorio('intermediadoraRepresentante', 'o nome do representante');
+      obrigatorio('intermediadoraQualificacao', 'a qualificação do representante');
+      if (valores.intermediadoraCnpj && !v.documentoValido(valores.intermediadoraCnpj)) {
+        avisos.push(`O CNPJ da intermediadora (${valores.intermediadoraCnpj}) parece inválido — confira os dígitos.`);
+      }
+    }
   }
 
   if (exig.scp) {
@@ -411,8 +483,19 @@ function montarDocumento(tipo, interp, ctx, usuario) {
       formaAquisicao: val.formaAquisicao, aVista,
       dataPagamento: aVista && v.dataIso(val.dataPagamentoAVista) ? dataBr(v.dataIso(val.dataPagamentoAVista)) : '',
       formaPagamentoAVista: aVista ? val.formaPagamentoAVista : '',
-      parcelas: aVista ? [] : linhasDeParcela(interp.parcelas, preco)
+      parcelas: aVista ? [] : linhasDeParcela(interp.parcelas, preco),
+      // Observações do quadro de pagamento, a partir da 2) — uma por linha.
+      observacaoEspecial: val.observacoesPagamento
     };
+
+    documento.intermediadora = val.intermediadoraConsta ? {
+      razaoSocial: val.intermediadoraRazaoSocial,
+      cnpj: formato.formatarCpfCnpj(val.intermediadoraCnpj),
+      creci: val.intermediadoraCreci,
+      endereco: val.intermediadoraEndereco,
+      representante: val.intermediadoraRepresentante,
+      representanteQualificacao: val.intermediadoraQualificacao
+    } : null;
   }
 
   if (d.scp) {
@@ -451,6 +534,14 @@ function salvarNoCadastro(ctx, interp) {
     const dados = {};
     unidadesSvc.CARACTERISTICAS.forEach((k) => { dados[k] = val[k]; });
     unidadesSvc.salvarCaracteristicas(ctx.unidade.id, dados);
+  }
+
+  // A emissão lê o empreendimento do banco: gravar antes é o que faz a
+  // correção feita aqui sair no contrato.
+  if (interp.exig.preco && ctx.editaEmpreendimento && ctx.empreendimentoId) {
+    const dados = {};
+    incorporacao.NOMES.forEach((k) => { dados[k] = val[k]; });
+    incorporacao.salvar(ctx.empreendimentoId, dados);
   }
 }
 

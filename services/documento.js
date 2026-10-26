@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const docx = require('./docx');
+const { inteiroPorExtenso } = require('./extenso');
 
 const TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
 const caminhos = require('../caminhos');
@@ -300,6 +301,33 @@ function adicionarMeses(data, meses) {
   return nova;
 }
 
+/** Intermediadora é opcional: sem razão social, o bloco sai do contrato. */
+function temIntermediadora(documento) {
+  return Boolean(documento && documento.intermediadora && String(documento.intermediadora.razaoSocial || '').trim());
+}
+
+/**
+ * As observações do quadro de pagamento, já numeradas. A 1) é fixa no modelo;
+ * as daqui começam na 2). Uma por linha do que foi escrito; numeração que a
+ * pessoa tenha digitado ("2) ...") é trocada pela certa.
+ */
+function observacoesDePagamento(documento) {
+  const cv = (documento && documento.compraVenda) || {};
+  return String(cv.observacaoEspecial || '')
+    .split(/\r?\n/)
+    .map((linha) => linha.trim().replace(/^\d+\s*[).\-–]\s*/, ''))
+    .filter(Boolean)
+    .map((linha, i) => `${i + 2}) ${linha}`);
+}
+
+/** "101" vira "101 (Cento e um)", como o modelo escrevia; texto livre passa como está. */
+function tipoPadronizado(valor) {
+  const texto = String(valor || '').trim();
+  if (!/^\d+$/.test(texto)) return texto;
+  const extenso = inteiroPorExtenso(parseInt(texto, 10));
+  return `${texto} (${extenso.charAt(0).toUpperCase()}${extenso.slice(1)})`;
+}
+
 function montarValores(documento, empreendimento, extras = {}) {
   const geral = documento.dadosGerais || {};
   const comprador = documento.comprador || {};
@@ -314,6 +342,8 @@ function montarValores(documento, empreendimento, extras = {}) {
   // Termo de Quitação e Distrato nascem no fim da operação, com dados que o
   // sistema já tem — não vêm do formulário.
   const encerramento = documento.encerramento || {};
+  const intermediadora = temIntermediadora(documento) ? documento.intermediadora : {};
+  const qualificacaoRepresentante = String(intermediadora.representanteQualificacao || '').trim();
 
   const data = parsearData(geral.dataDocumento) || parsearData(geral.dataHora);
 
@@ -361,6 +391,29 @@ function montarValores(documento, empreendimento, extras = {}) {
     SOCIO_ADMIN_CPF: emp.socioAdminCpf,
     SOCIO_ADMIN_RG: emp.socioAdminRg,
     SOCIO_ADMIN_ENDERECO: emp.socioAdminEndereco,
+
+    // Item II do Quadro Resumo e cláusula 3 do contrato. São da incorporação,
+    // iguais para todas as unidades — por isso moram no cadastro do
+    // empreendimento. O modelo trazia os de um contrato real, escritos fixos.
+    INCORPORACAO_REGISTRO: emp.registroIncorporacao,
+    INCORPORACAO_PATRIMONIO_AFETACAO: emp.patrimonioAfetacao,
+    IMOVEL_ENDERECO: emp.enderecoImovel,
+    ALVARA_CONSTRUCAO: emp.alvaraConstrucao,
+    DATA_PREVISTA_ENTREGA: formatarData(parsearData(emp.dataEntrega)) || emp.dataEntrega,
+    ORCAMENTO_DATA: formatarData(parsearData(emp.dataOrcamento)) || emp.dataOrcamento,
+    TIPO_PADRONIZADO: tipoPadronizado(emp.tipoPadronizado),
+    AREAS_SUB_ROGADAS: emp.areasSubRogadas,
+
+    // Intermediadora: só quando houver. Sem ela, o bloco inteiro sai do
+    // documento (ver BLOCOS_REMOVIVEIS).
+    INTERMEDIADORA_TITULO: temIntermediadora(documento) ? 'INTERMEDIADORA' : '',
+    INTERMEDIADORA_RAZAO_SOCIAL: intermediadora.razaoSocial,
+    INTERMEDIADORA_CNPJ: intermediadora.cnpj,
+    INTERMEDIADORA_CRECI: intermediadora.creci,
+    INTERMEDIADORA_ENDERECO: intermediadora.endereco,
+    INTERMEDIADORA_REPRESENTANTE: intermediadora.representante,
+    // A vírgula vem junto: sem qualificação, a frase fecha logo após o nome.
+    INTERMEDIADORA_REPRESENTANTE_QUALIFICACAO: qualificacaoRepresentante ? `, ${qualificacaoRepresentante}` : '',
 
     UNIDADE_NUMERO_EXTENSO: unidade.numeroExtenso || anexo.numeroUnidadeExtenso,
     UNIDADE_VAGAS: unidade.vagasGaragem,
@@ -544,7 +597,15 @@ function converterParaPdf(caminhoDocx) {
 const BLOCOS_CONDICIONAIS = [
   { prefixo: 'CONJUGE_', presente: (d) => Boolean(d.conjuge && d.conjuge.nome) },
   { prefixo: 'TESTEMUNHA_1_', presente: (d) => Boolean((d.testemunhas || [])[0]) },
-  { prefixo: 'TESTEMUNHA_2_', presente: (d) => Boolean((d.testemunhas || [])[1]) }
+  { prefixo: 'TESTEMUNHA_2_', presente: (d) => Boolean((d.testemunhas || [])[1]) },
+  { prefixo: 'INTERMEDIADORA_', presente: temIntermediadora },
+  { prefixo: 'OBS_PAGAMENTO', presente: (d) => observacoesDePagamento(d).length > 0 }
+];
+
+// Blocos que, ausentes, saem do documento por inteiro — título e texto —
+// em vez de ficar com os rótulos e os campos em branco.
+const BLOCOS_REMOVIVEIS = [
+  { prefixo: 'INTERMEDIADORA_', presente: temIntermediadora }
 ];
 
 /**
@@ -617,6 +678,10 @@ async function gerarDocumento({ documento, empreendimento, empreendimentoId, uni
   } else if (documento.compraVenda) {
     novoXml = montarTabelaParcelas(novoXml, documento.compraVenda);
   }
+  // Uma observação por parágrafo; nenhuma, e o parágrafo sai.
+  novoXml = docx.repetirParagrafo(novoXml, 'OBS_PAGAMENTO', observacoesDePagamento(documento));
+  novoXml = docx.removerParagrafosCom(novoXml,
+    BLOCOS_REMOVIVEIS.filter((b) => !b.presente(documento)).map((b) => b.prefixo));
   novoXml = docx.substituirPlaceholders(novoXml, valores);
 
   const pasta = path.join(STORAGE_DIR, empreendimentoId || 'sem-empreendimento', 'contratos');
@@ -651,5 +716,5 @@ async function gerarDocumento({ documento, empreendimento, empreendimentoId, uni
 
 module.exports = {
   gerarDocumento, MODELOS, CATALOGO, OPERACOES, montarValores, conferirPreenchimento,
-  parsearData, formatarData, adicionarMeses
+  parsearData, formatarData, adicionarMeses, observacoesDePagamento, tipoPadronizado
 };

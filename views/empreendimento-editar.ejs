@@ -122,6 +122,22 @@
       </div>
     </div>
 
+    <h3 style="margin:28px 0 4px;border-top:1px solid #e5e7eb;padding-top:20px;">Dados da incorporação</h3>
+    <p style="margin:0 0 16px;color:#6b7280;font-size:14px;">
+      Entram no item II do Quadro Resumo e na cláusula 3 do Contrato de Promessa de Compra e Venda.
+      Valem para todas as unidades. Também dá para corrigir na hora de gerar o contrato.
+    </p>
+    <div class="form-grid">
+      <% camposIncorporacao.forEach((c) => { %>
+        <div class="form-group<%= c.cheio ? ' full' : '' %>">
+          <label for="<%= c.nome %>"><%= c.rotulo %></label>
+          <input type="<%= c.tipo || 'text' %>" id="<%= c.nome %>" name="<%= c.nome %>"
+                 value="<%= empreendimento[c.nome] || '' %>" placeholder="<%= c.ph || '' %>" />
+          <% if (c.ajuda) { %><small><%= c.ajuda %></small><% } %>
+        </div>
+      <% }) %>
+    </div>
+
     <h3 style="margin:28px 0 4px;border-top:1px solid #e5e7eb;padding-top:20px;">Links</h3>
     <p style="margin:0 0 16px;color:#6b7280;font-size:14px;">
       Cole o endereço completo. Os botões na tela do empreendimento levam para cá.

@@ -357,7 +357,12 @@ const colunasEmpreendimentos = db.prepare('PRAGMA table_info(empreendimentos)').
   // Conta vinculada ao empreendimento, citada nos termos
   'banco', 'agencia', 'conta', 'pix',
   // Qualificação do sócio administrador que assina
-  'socioAdminCpf', 'socioAdminRg', 'socioAdminEndereco'
+  'socioAdminCpf', 'socioAdminRg', 'socioAdminEndereco',
+  // Item II do Quadro Resumo e cláusula 3 do contrato de compra e venda: dados
+  // da incorporação, iguais para todas as unidades. O modelo trazia os de um
+  // contrato real escritos fixos.
+  'registroIncorporacao', 'patrimonioAfetacao', 'enderecoImovel', 'alvaraConstrucao',
+  'dataEntrega', 'dataOrcamento', 'tipoPadronizado', 'areasSubRogadas'
 ].forEach((coluna) => {
   if (!colunasEmpreendimentos.includes(coluna)) {
     db.exec(`ALTER TABLE empreendimentos ADD COLUMN ${coluna} TEXT`);

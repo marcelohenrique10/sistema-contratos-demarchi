@@ -70,6 +70,11 @@
   .emitir .soma { font-size: 13px; margin-top: 10px; font-variant-numeric: tabular-nums; }
   .emitir .soma.diverge { color: var(--atencao); font-weight: 600; }
   .emitir .soma.bate { color: var(--ok); }
+  .emitir textarea { width: 100%; font: inherit; }
+  .emitir .leitura { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: 6px 14px; margin: 0; font-size: 14px; }
+  .emitir .leitura dt { color: var(--texto-suave); }
+  .emitir .leitura dd { margin: 0; }
+  @media (max-width: 600px) { .emitir .leitura { grid-template-columns: 1fr; } .emitir .leitura dd { margin-bottom: 8px; } }
   .emitir .barra-final { position: sticky; bottom: 0; background: var(--fundo); padding: 14px 0; border-top: 1px solid var(--linha); }
 </style>
 
@@ -176,6 +181,53 @@
       </div>
     </section>
 
+    <!-- ===================================================== intermediadora -->
+    <section class="form-card secao" data-para="cv">
+      <h3>Intermediadora <span style="font-weight: 400; color: var(--texto-suave); font-size: 14px;">(se houver)</span></h3>
+      <label class="doc" style="margin-bottom: 12px;">
+        <input type="checkbox" name="intermediadoraConsta" value="1" id="intermediadoraConsta" <%= val('intermediadoraConsta') ? 'checked' : '' %> />
+        <span>
+          <strong>Houve imobiliária intermediando esta venda</strong>
+          <small>Sem isso marcado, o bloco "Intermediadora" não aparece no contrato.</small>
+        </span>
+      </label>
+      <div class="form-grid" id="campos-intermediadora">
+        <%- campo('intermediadoraRazaoSocial', 'Razão social', { obrig: true, ph: 'VMC FERREIRA CORRETORA DE IMÓVEIS' }) %>
+        <%- campo('intermediadoraCnpj', 'CNPJ', { obrig: true, modo: 'numeric' }) %>
+        <%- campo('intermediadoraCreci', 'CRECI jurídico', { obrig: true, ph: '9508-J' }) %>
+        <%- campo('intermediadoraEndereco', 'Endereço da sede, com CEP e cidade', { obrig: true, cheio: true,
+              ph: 'Avenida Presidente Castelo Branco, 246 - Loja 20, CEP 29.192-066, Aracruz-ES' }) %>
+        <%- campo('intermediadoraRepresentante', 'Representante (nome completo)', { obrig: true }) %>
+        <%- campo('intermediadoraQualificacao', 'Qualificação do representante', { obrig: true, cheio: true,
+              ph: 'sócia, brasileira, solteira, administradora e corretora de imóveis, inscrita no CRECI-ES sob o nº 8503-F/13ª Região',
+              ajuda: 'Entra logo depois do nome: "neste ato representada por FULANA, [qualificação], doravante..."' }) %>
+      </div>
+    </section>
+
+    <!-- ===================================================== incorporação -->
+    <section class="form-card secao" data-para="cv">
+      <h3>Incorporação — <%= ctx.empreendimento ? ctx.empreendimento.nome : '' %></h3>
+      <% if (ctx.editaEmpreendimento) { %>
+        <p class="nota">
+          Item II do Quadro Resumo e cláusula 3 do contrato. São do empreendimento, iguais para todas as
+          unidades: o que você corrigir aqui fica salvo no cadastro dele.
+        </p>
+        <div class="form-grid">
+          <% camposIncorporacao.forEach((c) => { %>
+            <%- campo(c.nome, c.rotulo, { obrig: true, tipo: c.tipo, cheio: c.cheio, ph: c.ph, ajuda: c.ajuda }) %>
+          <% }) %>
+        </div>
+      <% } else { %>
+        <p class="nota">Vêm do cadastro do empreendimento. Só um administrador corrige.</p>
+        <dl class="leitura">
+          <% camposIncorporacao.forEach((c) => { const x = val(c.nome); %>
+            <dt><%= c.rotulo %></dt>
+            <dd><%= x ? (c.tipo === 'date' ? x.split('-').reverse().join('/') : x) : '' %><% if (!x) { %><span class="erro-campo">não preenchido</span><% } %></dd>
+          <% }) %>
+        </dl>
+      <% } %>
+    </section>
+
     <!-- ===================================================== unidade -->
     <section class="form-card secao">
       <h3>Unidade <%= ctx.unidade ? ctx.unidade.numero : '' %></h3>
@@ -278,6 +330,24 @@
       <datalist id="tipos-parcela-scp">
         <% listas.tiposParcelaScp.forEach((t) => { %><option value="<%= t %>"></option><% }) %>
       </datalist>
+    </section>
+
+    <!-- ===================================================== observações -->
+    <section class="form-card secao" data-para="cv">
+      <h3>Observações do pagamento <span style="font-weight: 400; color: var(--texto-suave); font-size: 14px;">(opcional)</span></h3>
+      <p class="nota">
+        Saem logo abaixo da tabela de parcelas. A observação 1, sobre as datas de vencimento, é fixa no
+        contrato; as daqui viram a 2, a 3... — uma por linha. Em branco, só a 1 aparece.
+      </p>
+      <div class="form-group full">
+        <label for="observacoesPagamento">Observações</label>
+        <textarea id="observacoesPagamento" name="observacoesPagamento" rows="4"
+                  placeholder="Uma observação por linha" <%= erros.observacoesPagamento ? 'aria-invalid="true"' : '' %>><%= val('observacoesPagamento') %></textarea>
+        <% if (erros.observacoesPagamento) { %><small class="erro-campo"><%= erros.observacoesPagamento %></small><% } %>
+      </div>
+      <div class="actions" style="margin-top: 8px;">
+        <button type="button" class="button secondary" id="obs-permuta">+ Texto de imóvel dado em permuta</button>
+      </div>
     </section>
 
     <!-- ===================================================== testemunhas -->

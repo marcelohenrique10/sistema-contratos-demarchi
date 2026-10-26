@@ -33,6 +33,80 @@ function listarPlaceholders(xml) {
   return [...new Set(semTags.match(/\[[A-Z0-9_]+\]/g) || [])];
 }
 
+// ---------- Parágrafos ----------
+
+const RE_PARAGRAFO = /<w:p[ >][\s\S]*?<\/w:p>/g;
+
+function textoDoParagrafo(paragrafoXml) {
+  return (paragrafoXml.match(/<w:t(?:\s[^>]*)?>[^<]*<\/w:t>/g) || [])
+    .map((t) => t.replace(/<[^>]+>/g, ''))
+    .join('');
+}
+
+function paragrafos(xml) {
+  const lista = [];
+  let m;
+  RE_PARAGRAFO.lastIndex = 0;
+  while ((m = RE_PARAGRAFO.exec(xml))) {
+    lista.push({ inicio: m.index, fim: m.index + m[0].length, xml: m[0], texto: textoDoParagrafo(m[0]) });
+  }
+  return lista;
+}
+
+/**
+ * Remove os parágrafos cujo texto contém algum dos placeholders informados
+ * (por prefixo: 'INTERMEDIADORA_' pega todos os campos da intermediadora).
+ *
+ * É assim que um bloco opcional some por inteiro do documento, título
+ * incluído, em vez de sair com os rótulos e os campos vazios. Se o bloco
+ * estava entre duas linhas em branco, uma delas sai junto, para não ficar
+ * um buraco duplo no lugar.
+ */
+function removerParagrafosCom(xml, prefixos) {
+  if (!prefixos.length) return xml;
+  const lista = paragrafos(xml);
+  const temMarcador = (texto) => prefixos.some((p) => texto.includes(`[${p}`));
+
+  const remover = new Set();
+  lista.forEach((p, i) => { if (temMarcador(p.texto)) remover.add(i); });
+
+  const vazio = (i) => lista[i] && !lista[i].texto.trim();
+  // Colado: só espaço entre um parágrafo e outro (nada de tabela no meio)
+  const colados = (a, b) => lista[a] && lista[b] && !xml.slice(lista[a].fim, lista[b].inicio).trim();
+
+  [...remover].forEach((i) => {
+    if (remover.has(i + 1)) return; // não é o fim do bloco
+    let primeiro = i;
+    while (remover.has(primeiro - 1)) primeiro--;
+    if (vazio(primeiro - 1) && vazio(i + 1) && colados(primeiro - 1, primeiro) && colados(i, i + 1)) {
+      remover.add(i + 1);
+    }
+  });
+
+  let resultado = xml;
+  [...remover].sort((a, b) => b - a).forEach((i) => {
+    resultado = resultado.slice(0, lista[i].inicio) + resultado.slice(lista[i].fim);
+  });
+  return resultado;
+}
+
+/**
+ * Repete o parágrafo que contém `[CHAVE]`, uma cópia para cada texto, com a
+ * formatação do original. Lista vazia remove o parágrafo.
+ *
+ * Usado nas observações do quadro de pagamento: quantas houver, cada uma
+ * no seu parágrafo.
+ */
+function repetirParagrafo(xml, chave, textos) {
+  const marcador = `[${chave}]`;
+  const alvo = paragrafos(xml).find((p) => p.texto.includes(marcador));
+  if (!alvo) return xml;
+  if (!textos.length) return removerParagrafosCom(xml, [chave]);
+
+  const copias = textos.map((texto) => alvo.xml.replace(marcador, escaparXml(texto)));
+  return xml.slice(0, alvo.inicio) + copias.join('') + xml.slice(alvo.fim);
+}
+
 // ---------- Tabelas ----------
 
 function extrairLinhas(tabelaXml) {
@@ -95,6 +169,8 @@ module.exports = {
   gravarDocumentoXml,
   substituirPlaceholders,
   listarPlaceholders,
+  removerParagrafosCom,
+  repetirParagrafo,
   extrairLinhas,
   extrairCelulas,
   definirTextoCelula,

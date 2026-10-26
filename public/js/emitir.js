@@ -56,6 +56,7 @@
     document.getElementById('secao-parcelas').hidden = !((temCV && !aVista) || temSCP);
 
     document.getElementById('campos-conjuge').hidden = !document.getElementById('conjugeConsta').checked;
+    document.getElementById('campos-intermediadora').hidden = !document.getElementById('intermediadoraConsta').checked;
 
     // Só SCP: o tipo da parcela é uma das cinco linhas fixas da tabela.
     var lista = temSCP && !temCV ? 'tipos-parcela-scp' : 'tipos-parcela';
@@ -129,6 +130,29 @@
     if (linhas.length > 1) tr.remove();
     else Array.prototype.forEach.call(tr.querySelectorAll('input'), function (i) { i.value = ''; });
     somar();
+  });
+
+  // ------------------------------------------------------------ observações
+  // O texto que o contrato modelo trazia para quando parte do preço é paga com
+  // um imóvel. O valor vem das parcelas pagas com "Apartamento" ou "Permuta";
+  // a descrição do imóvel fica para a pessoa completar.
+  document.getElementById('obs-permuta').addEventListener('click', function () {
+    var soma = 0;
+    Array.prototype.forEach.call(corpoParcelas.querySelectorAll('tr'), function (tr) {
+      var forma = tr.querySelector('[name="parcelaForma"]').value;
+      var v = dinheiro(tr.querySelector('[name="parcelaValor"]').value);
+      var q = parseInt(tr.querySelector('[name="parcelaQtd"]').value, 10) || 1;
+      if ((forma === 'Apartamento' || forma === 'Permuta') && v > 0) soma += v * q;
+    });
+    var valorTexto = soma > 0 ? reais.format(soma).replace(/\s/g, ' ') : 'R$ ___';
+    var texto = 'As partes ajustam que a correção INCC sobre o débito de ' + valorTexto
+      + ' referente a permuta serão aplicados tanto sobre o saldo devedor quanto da valorização do '
+      + '[descreva o imóvel: tipo, número, endereço completo e CEP].';
+    var campo = document.getElementById('observacoesPagamento');
+    campo.value = campo.value.trim() ? campo.value.replace(/\s*$/, '') + '\n' + texto : texto;
+    campo.focus();
+    var inicio = campo.value.lastIndexOf('[descreva');
+    if (inicio !== -1) campo.setSelectionRange(inicio, campo.value.length - 1);
   });
 
   // ----------------------------------------------------------------- extenso

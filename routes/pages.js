@@ -13,6 +13,7 @@ const reservas = require('../services/reservas');
 const formato = require('../services/formato');
 const documentoSvc = require('../services/documento');
 const encerramento = require('../services/encerramento');
+const incorporacao = require('../services/incorporacao');
 const caminhos = require('../caminhos');
 
 /**
@@ -249,6 +250,7 @@ router.get('/empreendimentos/:id/editar', (req, res) => {
       plantaLink: empreendimento.plantaLink === '#' ? '' : (empreendimento.plantaLink || ''),
       tabelaVendaLink: empreendimento.tabelaVendaLink === '#' ? '' : (empreendimento.tabelaVendaLink || '')
     },
+    camposIncorporacao: incorporacao.CAMPOS,
     erro: req.query.erro || null
   });
 });
@@ -285,6 +287,7 @@ router.post('/empreendimentos/:id', (req, res) => {
 
   db.prepare(`UPDATE empreendimentos SET ${colunas.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`)
     .run([...valores, req.params.id]);
+  incorporacao.salvar(req.params.id, req.body);
   res.redirect(`/empreendimentos/${req.params.id}?ok=1`);
 });
 
