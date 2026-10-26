@@ -1,0 +1,104 @@
+<%- include("partials/header") %>
+
+<div class="page-header">
+  <h2>Backup</h2>
+  <p>Cópia de tudo o que está no sistema: cadastros, financeiro e os documentos gerados.</p>
+</div>
+
+<% if (erro) { %>
+  <div style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;padding:12px 16px;border-radius:8px;margin-bottom:20px;">
+    <%= erro %>
+  </div>
+<% } %>
+
+<% if (aviso) { %>
+  <div style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:12px 16px;border-radius:8px;margin-bottom:20px;">
+    <%= aviso %>
+  </div>
+<% } %>
+
+<% if (!temDisco) { %>
+  <%# Sem DADOS_DIR, a hospedagem gratuita apaga banco e cópias a cada reinício %>
+  <div style="background:#fffbeb;color:#92400e;border:1px solid #fde68a;padding:12px 16px;border-radius:8px;margin-bottom:20px;">
+    <strong>Os dados ainda não estão num disco permanente.</strong>
+    Na hospedagem atual, um reinício ou uma publicação volta o sistema ao início,
+    e as cópias guardadas no servidor somem junto. Até o disco ser contratado,
+    baixe o backup para o seu computador antes de cada publicação.
+  </div>
+<% } %>
+
+<div class="form-card">
+  <h3>Baixar backup</h3>
+  <p style="color:#6b7280;font-size:14px;margin-top:-10px;margin-bottom:16px;">
+    Um arquivo .zip com o banco e todos os documentos. Guarde fora do servidor,
+    num lugar da De Marchi (Google Drive, por exemplo). O arquivo tem CPF, RG e
+    endereço de clientes: não envie por e-mail aberto nem deixe em pasta compartilhada.
+  </p>
+  <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;">
+    <a class="button" href="/backup/baixar">Baixar backup agora</a>
+    <form method="POST" action="/backup/salvar" class="inline-form">
+      <button type="submit" class="button secondary">Guardar uma cópia no servidor</button>
+    </form>
+  </div>
+</div>
+
+<div class="form-card" style="margin-top:24px;">
+  <h3>Cópias guardadas no servidor</h3>
+  <p style="color:#6b7280;font-size:14px;margin-top:-10px;margin-bottom:16px;">
+    O sistema faz uma por dia sozinho e guarda as últimas 14. Antes de cada
+    restauração, guarda também o estado anterior, para desfazer um engano.
+    Elas ficam no mesmo servidor dos dados: protegem contra erro, não contra
+    perder a hospedagem. Por isso o backup baixado continua necessário.
+  </p>
+
+  <% if (!copias.length) { %>
+    <p style="color:#6b7280;font-size:14px;margin:0;">Nenhuma cópia ainda.</p>
+  <% } else { %>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr><th>Arquivo</th><th>Quando</th><th>Tamanho</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% copias.forEach(c => { %>
+            <tr>
+              <td style="font-family:monospace;font-size:13px;"><%= c.nome %></td>
+              <td style="white-space:nowrap;"><%= c.criadoEm.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) %></td>
+              <td style="white-space:nowrap;"><%= (c.tamanho / 1024 / 1024).toFixed(1).replace('.', ',') %> MB</td>
+              <td style="text-align:right;"><a class="button secondary" style="font-size:12px;padding:5px 10px;" href="/backup/copias/<%= encodeURIComponent(c.nome) %>">Baixar</a></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<div class="form-card" style="margin-top:24px;border-color:#fecaca;">
+  <h3>Restaurar um backup</h3>
+  <p style="color:#6b7280;font-size:14px;margin-top:-10px;margin-bottom:16px;">
+    <strong style="color:#b91c1c;">Substitui todos os dados atuais</strong> pelos do arquivo:
+    clientes, unidades, contratos, financeiro e usuários. O estado de agora é
+    guardado antes, nas cópias acima. Depois de restaurar, pode ser preciso
+    entrar de novo.
+  </p>
+  <form method="POST" action="/backup/restaurar" enctype="multipart/form-data"
+        onsubmit="return confirm('Substituir todos os dados do sistema pelos do arquivo escolhido?');">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Arquivo do backup (.zip)</label>
+        <input type="file" name="arquivo" accept=".zip,application/zip" required />
+      </div>
+      <div class="form-group">
+        <label>Digite RESTAURAR para confirmar</label>
+        <input type="text" name="confirmar" autocomplete="off" autocapitalize="characters"
+               pattern="RESTAURAR" required />
+      </div>
+    </div>
+    <div class="actions" style="margin-top:16px;">
+      <button type="submit" class="button danger">Restaurar</button>
+    </div>
+  </form>
+</div>
+
+<%- include("partials/footer") %>

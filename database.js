@@ -10,7 +10,36 @@ caminhos.garantirPastas();
 const lockPath = caminhos.BANCO + '.lock';
 try { fs.rmSync(lockPath, { recursive: true, force: true }); } catch (_) {}
 
+// Disco recém-montado começa vazio. Em vez de nascer um banco com os dados de
+// exemplo escritos abaixo, parte da cópia versionada no repositório — o mesmo
+// conteúdo que o sistema mostrava antes do disco.
+//
+// Acontece uma vez só: depois que o arquivo existe no disco, o do repositório
+// não é mais lido. É isso que faz uma publicação deixar de apagar os dados.
+if (caminhos.BANCO !== caminhos.SEMENTE && !fs.existsSync(caminhos.BANCO) && fs.existsSync(caminhos.SEMENTE)) {
+  fs.copyFileSync(caminhos.SEMENTE, caminhos.BANCO);
+  console.log(`Banco novo em ${caminhos.BANCO}, copiado de ${caminhos.SEMENTE}.`);
+}
+
 const db = new Database(caminhos.BANCO);
+
+// No node-sqlite3-wasm, Statement.get() lê a primeira linha e deixa a consulta
+// parada no meio. Como o sistema inteiro usa db.prepare(...).get() sem
+// finalize, sempre havia uma consulta "em andamento" — o que mantém uma leitura
+// do banco aberta para sempre e faz o SQLite recusar VACUUM e DETACH (o backup
+// e a restauração tropeçaram nisso). Reiniciar a consulta depois de ler a
+// linha resolve em um lugar só; a mesma consulta preparada continua reutilizável.
+const amostra = db.prepare('SELECT 1');
+const Statement = amostra.constructor;
+amostra.finalize();
+const getOriginal = Statement.prototype.get;
+Statement.prototype.get = function (...args) {
+  try {
+    return getOriginal.apply(this, args);
+  } finally {
+    if (!this.isFinalized) this._reset();
+  }
+};
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS empreendimentos (

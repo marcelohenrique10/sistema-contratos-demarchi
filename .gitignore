@@ -3,3 +3,6 @@ node_modules/
 
 # Documentos gerados em execução — não pertencem ao repositório
 storage/
+
+# Cópias de segurança automáticas: dados de cliente, nunca no git
+backups/

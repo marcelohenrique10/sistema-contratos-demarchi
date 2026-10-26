@@ -24,12 +24,19 @@ const STORAGE = process.env.STORAGE_DIR
   ? path.resolve(process.env.STORAGE_DIR)
   : path.join(DADOS, 'storage');
 
+// O banco versionado no repositório. Sem disco, é ele o banco em uso; com
+// disco, serve só de ponto de partida na primeira subida.
+const SEMENTE = path.join(RAIZ, 'imobiliaria.db');
+
+// Cópias de segurança automáticas. Ficam junto dos dados: com disco, no disco.
+const BACKUPS = path.join(DADOS, 'backups');
+
 // A pasta pode não existir na primeira subida — o repositório não versiona
 // `storage/`, e o disco montado começa vazio.
 function garantirPastas() {
-  for (const pasta of [DADOS, STORAGE, path.join(STORAGE, 'documentos')]) {
+  for (const pasta of [DADOS, STORAGE, path.join(STORAGE, 'documentos'), BACKUPS]) {
     if (!fs.existsSync(pasta)) fs.mkdirSync(pasta, { recursive: true });
   }
 }
 
-module.exports = { RAIZ, DADOS, BANCO, STORAGE, garantirPastas };
+module.exports = { RAIZ, DADOS, BANCO, STORAGE, SEMENTE, BACKUPS, garantirPastas };

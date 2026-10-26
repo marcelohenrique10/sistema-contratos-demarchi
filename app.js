@@ -5,6 +5,8 @@ const pagesRouter = require('./routes/pages');
 const webhookRouter = require('./routes/webhook');
 const authRouter = require('./routes/auth');
 const usuariosRouter = require('./routes/usuarios');
+const backupRouter = require('./routes/backup');
+const backup = require('./services/backup');
 const { exigirLogin } = require('./services/auth');
 const caminhos = require('./caminhos');
 
@@ -43,10 +45,16 @@ app.use('/storage', exigirLogin, express.static(caminhos.STORAGE));
 // Montado no caminho, e não em '/', senão o exigirAdmin dele barraria tudo.
 app.use('/usuarios', exigirLogin, usuariosRouter);
 
+// Backup e restauração — também só de administrador, pelo próprio router.
+app.use('/backup', exigirLogin, backupRouter);
+
 app.use('/', exigirLogin, pagesRouter);
 
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
+  console.log(`Dados em ${caminhos.DADOS}${process.env.DADOS_DIR ? '' : ' (sem DADOS_DIR: dentro do projeto)'}`);
+
+  backup.agendar();
 
   if (!process.env.SESSION_SECRET || !process.env.APP_SENHA) {
     console.warn('\n  ATENÇÃO: SESSION_SECRET e/ou APP_SENHA não definidos no .env.');
