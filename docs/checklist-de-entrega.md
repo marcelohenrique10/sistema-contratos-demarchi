@@ -138,32 +138,30 @@ carrega três credenciais.
 | Disco | os arquivos sobrevivem a reinício | nada, se o sistema não apontar para ele |
 | Tirar o banco do git | os dados param de ser sobrescritos a cada publicação | — |
 
-Hoje o `imobiliaria.db` **está dentro do repositório**, de propósito: em fase
-de teste, cada publicação restaura a base de demonstração. Isso significa que,
-do jeito que está, **todo deploy apaga o que o cliente cadastrou**.
+Hoje, sem disco, o sistema usa o `imobiliaria.db` do repositório, e **todo
+deploy ou reinício apaga o que o cliente cadastrou**.
 
-Depois dos três passos abaixo, os dados ficam fixos: publicar código não toca
-mais neles.
+O código já está pronto para o disco (26/10/2026): com `DADOS_DIR` definido,
+a primeira subida copia o banco do repositório para o disco e, daí em diante,
+publicar código não toca mais nos dados. Não é preciso tirar o banco do git
+para isso.
 
+- [ ] Baixar o backup em **Backup → Baixar backup agora**, se houver algo a manter
 - [ ] Contratar o plano pago (US$ 7/mês) e adicionar um disco em `/var/data`
-- [ ] Definir a variável `DADOS_DIR=/var/data`
-- [ ] Tirar o banco do versionamento:
-      ```bash
-      git rm --cached imobiliaria.db
-      echo "imobiliaria.db" >> .gitignore
-      git commit -m "Banco sai do versionamento" && git push
-      ```
-- [ ] Tirar também os documentos de demonstração que foram forçados para o git
-      (`storage/documentos/high-tower/contratos/*.docx`)
-- [ ] Confirmar que o serviço subiu com o banco no disco e não perdeu dado numa
-      segunda publicação
+- [ ] Definir a variável `DADOS_DIR=/var/data` e conferir no log a linha "Banco novo em /var/data..."
+- [ ] Restaurar o backup baixado em **Backup → Restaurar um backup**
+- [ ] Cadastrar um cliente de teste, reiniciar o serviço e conferir que ele continua lá
+- [ ] Antes de transferir o repositório: trocar o `imobiliaria.db` versionado por
+      um banco limpo (só empreendimento e unidades reais) e limpar o histórico
+      do git, que guarda dados de teste
 
-**Quando fazer:** no dia em que alguém cadastrar uma venda de verdade. Nem
-antes nem depois. O detalhamento está em [virada para produção](virada-para-producao.md).
+**Quando fazer:** antes de o cliente voltar a testar. Sem disco, o teste dele
+se perde de novo. O passo a passo está em [virada para produção](virada-para-producao.md).
 
-**Sobre backup:** o disco protege contra reinício, não contra apagar sem
-querer. Backup continua sem dono — precisa ser decidido, não é algo que o
-código resolva.
+**Sobre backup:** o sistema faz uma cópia diária no disco e guarda uma antes de
+cada restauração. Essas cópias protegem contra engano, não contra perder o
+disco ou a conta. Alguém da De Marchi precisa **baixar o backup pela tela toda
+semana** e guardar fora do Render. Isso precisa ter dono, combinado na entrega.
 
 ---
 
@@ -277,7 +275,8 @@ De Marchi pode dar.
       cliente precisa fornecer os arquivos `.docx`.
 - [ ] **Validação jurídica dos cinco modelos** por quem responde por isso na
       De Marchi.
-- [ ] **Backup:** quem faz, com que frequência, para onde.
+- [ ] **Backup:** quem baixa pela tela **Backup**, com que frequência (sugestão:
+      toda semana) e onde guarda (uma pasta da De Marchi com acesso restrito).
 
 ---
 
@@ -302,7 +301,7 @@ segredo depois do n8n publicado derruba a integração.
 1. GitHub          organização da EJOTA, repositório transferido
 2. Google          formulário e planilha na conta do cliente
 3. Render          serviço novo na conta do cliente, apontando para o GitHub novo
-4. Banco           plano pago + disco + banco fora do git
+4. Banco           plano pago + disco + DADOS_DIR, backup baixado e restaurado
 5. n8n             instância do cliente, credenciais novas, apontando para o Render novo
 6. Acessos         usuários reais, admin genérico desativado
 7. Dados           demonstração fora, dados reais dentro

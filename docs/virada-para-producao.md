@@ -1,99 +1,128 @@
 # A virada para produção
 
-Enquanto é fase de teste, o `imobiliaria.db` fica **versionado** de propósito:
-cada publicação restaura os dados de demonstração, o que ajuda a repetir teste
-no plano gratuito, onde o disco é apagado a cada reinício.
+Hoje o Render está no plano **gratuito**, sem disco. O sistema usa o
+`imobiliaria.db` que está no repositório, e a hospedagem gratuita apaga tudo a
+cada reinício (depois de 15 minutos parado) e a cada publicação:
 
-Isso tem uma consequência que precisa ficar explícita:
+> **O que o cliente cadastra some.** O sistema volta ao banco do repositório.
 
-> **Todo deploy sobrescreve os usuários e os dados de produção pelos do
-> repositório.** Corretor cadastrado hoje some na próxima publicação.
+O código já está pronto para o disco. A virada é configuração, sem programar.
 
-Aceitável em teste. Inaceitável com cliente usando.
+## Como funciona depois da virada
 
-## Quando virar
+Com a variável `DADOS_DIR` apontando para o disco:
 
-No dia em que **alguém cadastrar uma venda de verdade**. Não antes, não depois.
+- Na **primeira subida**, o disco está vazio e o sistema copia o
+  `imobiliaria.db` do repositório para lá. O log mostra
+  `Banco novo em /var/data/imobiliaria.db, copiado de ...`.
+- Daí em diante, o sistema só usa o banco do disco. O do repositório vira um
+  ponto de partida que ninguém mais lê. **Publicar código não toca mais nos
+  dados**, mesmo com o `imobiliaria.db` continuando no git.
+- Os documentos gerados e enviados também ficam no disco (`/var/data/storage`).
+- Todo dia sai uma cópia automática em `/var/data/backups` (ficam as últimas 14).
 
-## Os cinco passos
+## Os passos
 
-### 1. Contratar o disco
+### 1. Antes de tudo: baixar o backup
+
+Se alguém cadastrou algo que precisa sobreviver, entre como administrador em
+**Backup → Baixar backup agora** e guarde o `.zip`. Faça isso logo antes do
+passo 2, porque a hospedagem gratuita pode apagar os dados a qualquer momento.
+
+### 2. Contratar o disco
 
 No serviço do Render:
 
 - Trocar o plano de **Free** para **Starter, US$ 7/mês** (disco não existe no
-  gratuito, e o gratuito ainda hiberna após 15 min sem uso)
+  gratuito, e o gratuito ainda hiberna após 15 minutos sem uso)
 - *Disks* → *Add Disk*, montado em `/var/data`, 1 GB já sobra
 
-O disco é **cobrado à parte** da instância: US$ 0,25 por GB por mês,
-proporcional ao tempo de uso. Então o custo do Render fica em torno de
-**US$ 7,25/mês**, não US$ 7,00.
+O disco é **cobrado à parte**: US$ 0,25 por GB por mês. O Render fica em torno
+de **US$ 7,25/mês**.
 
-> Serviço com disco não faz publicação sem interrupção: o Render derruba a
-> instância antiga antes de subir a nova, e o sistema fica fora do ar por
-> alguns segundos a cada deploy. Para uso interno, irrelevante.
+> Serviço com disco não publica sem interrupção: o Render derruba a instância
+> antiga antes de subir a nova, e o sistema fica fora do ar por alguns
+> segundos a cada publicação. Para uso interno, irrelevante.
 
-### 2. Apontar os dados para o disco
+### 3. Apontar os dados para o disco
 
-Acrescentar nas variáveis de ambiente:
+Em *Environment*, acrescentar:
 
 ```
 DADOS_DIR=/var/data
 ```
 
-O código já respeita isso (ver `caminhos.js`). Banco e documentos passam a
-morar no disco, que é o único lugar que sobrevive a uma publicação.
+Salvar dispara uma nova publicação. No log (*Logs*), conferir as duas linhas:
 
-### 3. Tirar o banco do versionamento
-
-```bash
-git rm --cached imobiliaria.db
-echo "imobiliaria.db" >> .gitignore
-git commit -m "Banco sai do versionamento: dados de produção não vão para o git"
-git push
+```
+Banco novo em /var/data/imobiliaria.db, copiado de /opt/render/project/src/imobiliaria.db.
+Dados em /var/data
 ```
 
-A partir daqui, publicar **não toca mais nos dados**.
+Se aparecer `(sem DADOS_DIR: dentro do projeto)`, a variável não pegou.
 
-### 4. Levar os dados que já existem
+### 4. Trazer de volta o que foi salvo no passo 1
 
-O disco começa vazio, então o sistema criaria um banco novo com os dados de
-exemplo. Se houver algo em produção que precise sobreviver, copie o arquivo
-para o disco antes — dá para fazer pelo shell do Render, que passa a existir
-no plano pago.
+Entrar em **Backup → Restaurar um backup**, escolher o `.zip`, digitar
+`RESTAURAR` e confirmar. Clientes, unidades, contratos, financeiro, usuários e
+documentos voltam como estavam. Pode ser preciso entrar de novo.
 
-Se não houver nada a salvar, pule: o sistema cria o banco sozinho, e o
-administrador nasce a partir do `APP_SENHA`.
+Se não havia nada a salvar, pule: o sistema começa com os dados do repositório.
 
-### 5. Trocar as senhas
+### 5. Provar que ficou
 
-O `admin` do repositório tem a senha que circulou durante o desenvolvimento.
-Com o banco fora do git, crie os usuários de verdade:
+Cadastrar um cliente de teste, ir em *Manual Deploy → Restart service* no
+Render e conferir se o cliente continua lá. É o único teste que prova que o
+disco está ligado. Depois, apagar o cliente de teste.
+
+### 6. Trocar as senhas
+
+O `admin` do repositório tem a senha que circulou durante o desenvolvimento:
 
 - um administrador para cada uma das duas pessoas da De Marchi
 - um corretor para cada corretor
 - depois **desative o `admin`** genérico
 
-## O que continua faltando depois disso
+## O backup, depois da virada
 
-O disco protege contra reinício. **Não protege contra apagar sem querer**, nem
-contra o serviço ser excluído. Backup continua sem dono — é decisão de alguém,
-não do código.
+| Cópia | Onde fica | Protege contra |
+|---|---|---|
+| Automática, diária | no disco do Render | engano: apagar ou restaurar o arquivo errado |
+| "Antes de restaurar" | no disco do Render | restaurar o backup errado |
+| **Baixada pela tela** | **fora do Render** | perder a hospedagem, a conta ou o disco |
+
+As duas primeiras ficam no mesmo disco dos dados: se o disco ou o serviço se
+perder, elas vão junto. Por isso alguém da De Marchi precisa **baixar o backup
+toda semana** e guardar num lugar da empresa (Google Drive, por exemplo). Essa
+responsabilidade precisa ter dono, combinado na entrega.
+
+O `.zip` tem CPF, RG e endereço de clientes. Não pode ir por e-mail aberto nem
+ficar em pasta compartilhada com quem não deve ver.
+
+## Sobre tirar o `imobiliaria.db` do git
+
+Deixou de ser necessário para a virada: com `DADOS_DIR`, o arquivo do
+repositório não é mais o banco em uso. Continua valendo fazer antes da entrega
+final, por outro motivo: o histórico do git guarda dados de teste, e o
+repositório vai mudar de dono (ver `checklist-de-entrega.md`).
+
+Atenção ao fazer: sem o arquivo no repositório, um disco novo começaria com os
+dados de exemplo escritos no `database.js`. Antes de remover, troque-o por um
+banco limpo, só com o empreendimento e as unidades reais.
 
 ## Por que não Postgres/Supabase
-
-Vale registrar a comparação, porque a pergunta volta:
 
 | | Disco + SQLite | Supabase (Postgres) |
 |---|---|---|
 | Mudança no código | nenhuma | reescrever todas as consultas |
 | Esforço | minutos | dias, com risco |
-| Custo | US$ 7/mês | grátis no início |
-| Backup automático | não | sim |
-| Resolve os documentos `.docx` | sim | **não** — precisaria de disco ou storage assim mesmo |
+| Custo | US$ 7,25/mês | grátis no início |
+| Backup automático | diário no disco + download pela tela | sim |
+| Resolve os documentos `.docx` | sim | **não**: precisaria de disco ou storage assim mesmo |
 
-A última linha é a que decide: **o disco é necessário de qualquer forma**, porque
-os contratos gerados são arquivos. Tendo disco, o SQLite não custa nada a mais.
+A última linha é a que decide: **o disco é necessário de qualquer forma**,
+porque os contratos gerados são arquivos. Tendo disco, o SQLite não custa nada
+a mais.
 
-Postgres passa a valer a pena se aparecer mais de uma instância do sistema, ou
-se backup automático virar exigência formal. Hoje, não é o caso.
+Postgres passa a valer se houver mais de uma instância do sistema ou se backup
+fora do servidor virar exigência formal.
