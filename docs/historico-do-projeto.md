@@ -142,25 +142,50 @@ Como funciona o formulário interno:
 
 Com o formulário interno, o total fica em cerca de **US$ 7,25/mês**. O cliente vai pagar, mas só depois de validar. Por enquanto o Marcelo não tem como pagar.
 
-## 7. O que falta
+**26/10/2026 — ajustes no Contrato de Promessa** (`3d0ef17`): intermediadora opcional (o bloco some quando não há); item II e cláusula 3 viraram dados do empreendimento (`services/incorporacao.js`), que o admin edita e o corretor só vê; observações do pagamento a partir da 2), uma por linha.
 
-**Técnico**
-1. Push, só quando o Marcelo pedir.
-2. Contratar o disco e fazer a virada (o código está pronto; ver `docs/virada-para-producao.md`). Combinar quem baixa o backup toda semana.
-3. Cadastrar as unidades do High Tower (vagas, áreas, fração ideal, planta).
-4. Aposentar o webhook, o n8n e o Google Forms depois que o cliente validar. Hoje continuam funcionando, só sem link na tela.
-5. Atualizar `manual-do-sistema.md` e `manual-do-formulario.md`, que ainda descrevem o Google Forms.
-6. Preencher em `/empreendimentos` → High Tower os "Dados usados nos termos", e o e-mail do `admin` em `/usuarios`.
-7. Conferir a qualificação recuperada dos clientes antigos, que pode ter vindo com lixo de testes.
+**29/10/2026 — hospedagem.** Decidido: a De Marchi cria um Gmail exclusivo do sistema e a conta do Render com ele, cadastra o cartão e envia os acessos. O plano Hobby do Render não aceita membros (Pro custa US$ 25/mês), por isso o acesso é pelo login da conta. O Render não transfere serviço entre contas: o sistema é criado de novo na conta deles e os dados vêm pela tela de Backup. O n8n sai; os avisos de contrato passam a ser enviados pelo próprio sistema, com os documentos anexados, para quem gerou e para todos os admins (campo "Recebe aviso em"). PDF enviado ao cliente: `docs/Hospedagem do Sistema De Marchi.pdf`.
 
-**Entrega** (`docs/checklist-de-entrega.md`): GitHub da EJOTA, contas Google, Render e e-mail no nome da De Marchi, troca de senhas e segredos, e tirar o `imobiliaria.db` do histórico do git (tem dados pessoais de compradores).
+## 7. O que falta, por fase
 
-**Só o cliente responde** (lembrar sempre):
-1. Conta bancária do High Tower: o Compra e Venda traz fixa a conta `00003362-2` da Flor do Guarujá SPE, enquanto o SCP e o Distrato usam a `574637521-3` do High Tower.
+### Fase 1 — agora, sem depender do cliente
+1. **Avisos de contrato por e-mail, com anexos** (prometido no PDF). Envio por SMTP do Gmail com senha de app; para quem gerou e para todos os admins com "Recebe aviso em"; falha no e-mail não impede a geração e aparece na tela. Testar com um Gmail de teste.
+2. **Cônjuge opcional de verdade** no Contrato de Promessa: o bloco sai com rótulos vazios quando não há cônjuge.
+3. **Cláusula 1.3**: descreve o terreno com texto fixo (lotes 6 e 8, Rua Flor do Guarujá nº 47, matrícula 22.074). Ligar aos dados da incorporação ou confirmar com o cliente.
+4. **Finalizar consultas preparadas** do SQLite (vazamento de memória; tarefa separada já sugerida).
+
+### Fase 2 — quando a De Marchi enviar os acessos
+1. Antes de tudo, baixar o backup do Render atual (o gratuito pode zerar a qualquer momento).
+2. Na conta deles: criar o Web Service ligado ao GitHub, plano Starter, disco em `/var/data`.
+3. Variáveis: `DADOS_DIR=/var/data`, `NODE_ENV=production`, `SESSION_SECRET` e `APP_SENHA` novos, e as do e-mail (Gmail + senha de app).
+4. Senha de app do Gmail: precisa de 2 minutos com quem recebe o código de verificação na De Marchi.
+5. Restaurar o backup pela tela, reiniciar o serviço e conferir que os dados ficam.
+6. Gerar um contrato de teste e conferir os dois e-mails com anexos.
+7. Avisar o Léo: sistema pronto e **n8n pode ser cancelado**.
+8. Desligar o serviço antigo na conta do Marcelo.
+
+### Fase 3 — dados que o cliente precisa passar
+1. Dados da incorporação do High Tower (registro, patrimônio de afetação, endereço do imóvel, alvará, data de entrega, data do orçamento, tipo padronizado, áreas sub-rogadas). **Sem eles o Contrato de Promessa não gera.**
+2. Características de cada unidade do High Tower (tipo, vagas, áreas, fração ideal, planta).
+3. "Dados usados nos termos" do empreendimento (banco, agência, conta, PIX, telefone, sócio) e e-mail de cada admin em `/usuarios`.
+4. Conferir a qualificação dos clientes antigos (pode ter lixo de testes).
+
+### Fase 4 — perguntas jurídicas (lembrar sempre)
+1. Conta bancária do High Tower: Compra e Venda traz a `00003362-2` da Flor do Guarujá SPE; SCP e Distrato usam a `574637521-3` do High Tower.
 2. Procurador do Termo de Anuência: o modelo cita a Flor do Guarujá SPE.
-3. NIRE `32202941759` aparece com dois CNPJs diferentes.
-4. Intermediadora VMC Ferreira está escrita fixa no Compra e Venda.
-5. Modelos de Permuta e Reserva não existem.
-6. Pessoa jurídica: os modelos não têm lugar para o representante legal.
-7. SCP: o "valor do aporte" é o total ou só a entrada?
-8. Validação jurídica dos 7 modelos.
+3. NIRE `32202941759` aparece com dois CNPJs.
+4. Cláusula 3.3: áreas sub-rogadas são as unidades do dono do terreno, não a unidade comprada? (foi assim que ficou)
+5. Pessoa jurídica: os modelos não têm lugar para o representante legal.
+6. SCP: o "valor do aporte" é o total ou só a entrada?
+7. Distrato só cobre SCP; precisa de um para compra e venda?
+8. Modelos de Permuta e Reserva não existem.
+9. Validação jurídica dos 7 modelos.
+
+### Fase 5 — entrega final
+1. **Manual único** (parte do corretor e parte do admin), substituindo `manual-do-sistema.md` e `manual-do-formulario.md`, que ainda descrevem o Google Forms.
+2. Aposentar no código o webhook do n8n, `n8n/` e `forms/` (depois que os avisos estiverem no ar).
+3. Trocar o `imobiliaria.db` versionado por um banco limpo e limpar o histórico do git (tem dados de teste).
+4. Repositório para a organização da EJOTA no GitHub e repontar o Render.
+5. Usuários reais criados, `admin` genérico desativado.
+6. Combinar quem baixa o backup toda semana.
+7. Treinamento rápido e aceite. A De Marchi troca as senhas do Gmail e do Render.
